@@ -1,0 +1,7 @@
+defaults:
+  - pretrain: oracle_tc_m2td3
+  - _self_
+
+seed: 2671232903
+total_timesteps: 5e6
+record: false

@@ -1,0 +1,39 @@
+# pyproject.toml
+
+[project]
+name = "robust-rl"
+version = "0.1.0"
+description = "Dependencies for the TCTMDP project."
+readme = "README.md"
+requires-python = ">=3.10"
+
+
+dependencies = [
+    "hydra-core",
+    "numpy",
+    "coolname",
+    "rich",
+    "tensorboard",
+    "torch-tb-profiler>=0.2.0",
+    "gymnasium>=1.1.1",
+    "stable-baselines3",
+    "mujoco",
+    "torch",
+    "rrls",
+]
+
+
+# 3. Development Dependencies (If you had testing/linting tools, they'd go here)
+# Since your list mostly contains runtime packages, we'll keep it simple for now.
+# [dependency-groups]
+# dev = ["pytest"]
+
+[tool.uv.sources]
+rrls = { path = "C:/Users/ohadl/Documents/PhD/Repositories/RRLS", editable = true }
+torch = { index = "pytorch-cuda", marker = "sys_platform == 'win32'" }
+
+
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true

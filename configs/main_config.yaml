@@ -1,0 +1,14 @@
+_convert_: all
+
+defaults:
+  - agent: continual_td3
+  - env: mountain_car
+  - experiments: null
+  - _self_
+
+seed: 2671232903
+iterations: 1
+env:
+  max_episode_steps: 1e5
+bootstrap_model_path: null
+record: true

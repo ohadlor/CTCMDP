@@ -1,0 +1,9 @@
+# @package _global_
+defaults:
+  - /agent: td3
+  - /env: mountaincar
+  # - /env: vanilla/ant
+  - _self_
+
+env:
+  hidden: false

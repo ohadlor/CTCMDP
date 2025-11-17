@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - /agent: tc_m2td3
+  - /env: robust/ant
+  - _self_
+
+agent:
+  variant: stacked
+env:
+  radius: 0.01

@@ -1,0 +1,5 @@
+# @package schedule
+_target_: src.schedules.adversarial.AdversarialSchedule
+l2_radius: 0.1
+model_path: "pretrained_models/adversarial_schedule_cartpole.pth"
+# Add other adversarial schedule parameters here

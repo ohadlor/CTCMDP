@@ -1,0 +1,267 @@
+from typing import Union, Optional, Self
+from tqdm import tqdm
+
+import numpy as np
+import torch as th
+from gymnasium import Env
+from torch.nn import functional as F
+
+from src.buffers.replay_buffer import BaseBuffer
+from src.common.noise import OrnsteinUhlenbeckActionNoise
+from src.policies import TD3Policy
+from src.common.utils import polyak_update
+
+from .base_algorithm import BaseAlgorithm
+
+
+class TD3(BaseAlgorithm):
+    """
+    Twin Delayed Deep Deterministic Policy Gradient (TD3)
+    Addressing Function Approximation Error in Actor-Critic Methods.
+    """
+
+    def __init__(
+        self,
+        env: Env,
+        lr: float = 1e-3,
+        buffer_size: int = 1_000_000,
+        learning_starts: int = 100,
+        batch_size: int = 256,
+        gamma: float = 0.99,
+        tau: float = 0.005,
+        gradient_steps: int = 1,
+        action_noise_std: float = 0.1,
+        policy_delay: int = 2,
+        target_policy_noise: float = 0.2,
+        target_noise_clip: float = 0.5,
+        device: Union[th.device, str] = "auto",
+        tensorboard_log: str = "runs",
+        seed: Optional[int] = None,
+    ):
+        super().__init__(env.observation_space, env.action_space, lr, device, seed, tensorboard_log)
+        self.env = env
+        self.batch_size = batch_size
+        self.gamma = gamma
+        self.tau = tau
+        self.policy_delay = policy_delay
+        self.target_policy_noise = target_policy_noise
+        self.target_noise_clip = target_noise_clip
+        self.gradient_steps = gradient_steps
+        self.action_noise = OrnsteinUhlenbeckActionNoise(np.zeros(self.action_space.shape), sigma=0.5)
+
+        self.learning_starts = learning_starts
+        self.replay_buffer = BaseBuffer(buffer_size, self.observation_space, self.action_space, self.device, self.rng)
+
+        self.actor = None
+        self.critic = None
+        self.critic_target = None
+        self.actor_optimizer = None
+        self.critic_optimizer = None
+
+        self._n_updates = 0
+        self._setup_model()
+        self._make_aliases()
+
+    def _setup_model(self):
+        self.policy = TD3Policy(
+            self.observation_space,
+            self.action_space,
+            self.lr,
+            device=self.device,
+        )
+
+    def _make_aliases(self):
+        self.actor = self.policy.actor
+        self.critic = self.policy.critic
+        self.actor_target = self.policy.actor_target
+        self.critic_target = self.policy.critic_target
+        self.actor_optimizer = self.policy.actor.optimizer
+        self.critic_optimizer = self.policy.critic.optimizer
+
+    def train(self, gradient_steps: int, batch_size: int) -> tuple[float, Optional[float]]:
+        self.policy.set_training_mode(True)
+        actor_losses, critic_losses = [], []
+        for _ in range(gradient_steps):
+            self._n_updates += 1
+            replay_data = self.replay_buffer.sample(batch_size)
+
+            with th.no_grad():
+                # Target actions  with clipped noise
+                noise = replay_data.actions.clone().data.normal_(0, self.target_policy_noise)
+                noise = noise.clamp(-self.target_noise_clip, self.target_noise_clip)
+                next_actions = (self.actor_target(replay_data.next_observations) + noise).clamp(-1, 1)
+
+                # Compute target
+                next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
+                next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
+                target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
+
+            # Calculate critic loss
+            current_q_values = self.critic(replay_data.observations, replay_data.actions)
+            critic_loss = sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
+            critic_losses.append(critic_loss.item())
+
+            self.critic_optimizer.zero_grad()
+            critic_loss.backward()
+            self.critic_optimizer.step()
+
+            if self._n_updates % self.policy_delay == 0:
+                # Calculate actor loss
+                actor_loss = -self.critic.q1_forward(
+                    replay_data.observations, self.actor(replay_data.observations)
+                ).mean()
+                actor_losses.append(actor_loss.item())
+                self.actor_optimizer.zero_grad()
+                actor_loss.backward()
+                self.actor_optimizer.step()
+
+                polyak_update(self.actor.parameters(), self.actor_target.parameters(), self.tau)
+                polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
+
+        mean_critic_loss = np.mean(critic_losses) if critic_losses else 0.0
+        mean_actor_loss = np.mean(actor_losses) if actor_losses else None
+
+        return mean_critic_loss, mean_actor_loss
+
+    def sample_action(self, obs: np.ndarray, num_timesteps: int) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Sample an action from the policy, add noise, and scale it.
+        :param obs: Observation from the environment
+        :param num_timesteps: The current timestep
+        :return: A tuple containing:
+            - The unscaled action to be used in the environment.
+            - The scaled action (between -1 and 1) to be stored in the buffer.
+        """
+        # Get scaled action from the actor network
+        if num_timesteps < self.learning_starts:
+            # Sample a random action from a uniform distribution between -1 and 1
+            unscaled_action = self.action_space.sample()
+        else:
+            unscaled_action = self.predict(obs)
+
+        scaled_action = self.policy.scale_action(unscaled_action)
+
+        # Add noise to the action (improve exploration)
+        if self.action_noise is not None:
+            scaled_action = np.clip(scaled_action + self.action_noise(), -1, 1)
+
+        # We store the scaled action in the buffer
+        buffer_action = scaled_action
+        action = self.policy.unscale_action(scaled_action)
+
+        return action, buffer_action
+
+    def collect_rollouts(self, obs: np.ndarray, num_timesteps: int) -> tuple[np.ndarray, float, bool, bool, dict]:
+        """
+        Collect a single step from the environment and add it to the replay buffer.
+
+        :param obs: The current observation.
+        :param num_timesteps: The total number of timesteps collected so far.
+        :return: A tuple containing the new observation, the reward, terminated, truncated, and infos.
+        """
+
+        unscaled_action, scaled_action = self.sample_action(obs, num_timesteps)
+
+        # Step the environment
+        new_obs, reward, terminated, truncated, infos = self.env.step(unscaled_action)
+
+        # Add the transition to the replay buffer
+        self.replay_buffer.add(obs, new_obs, scaled_action, reward, terminated, infos)
+
+        return new_obs, reward, terminated, truncated, infos
+
+    def predict(self, obs: np.ndarray) -> np.ndarray:
+        """
+        Get the action from the policy.
+        :param obs: Observation from the environment.
+        :return: The action.
+        """
+        return self.policy.predict(obs)
+
+    def learn(
+        self,
+        total_timesteps: int,
+        log_interval: int = 4,
+        tb_log_name: str = "TD3",
+        reset_num_timesteps: bool = True,
+        progress_bar: bool = False,
+    ):
+        if self.tensorboard_log is not None and self.logger is None:
+            from torch.utils.tensorboard import SummaryWriter
+
+            self.logger = SummaryWriter(log_dir=self.tensorboard_log)
+        num_timesteps = 0
+
+        # Reset the environment
+        obs, _ = self.env.reset()
+
+        if progress_bar:
+            pbar = tqdm(total=total_timesteps)
+
+        ep_rewards = []
+        ep_len = 0
+
+        while num_timesteps < total_timesteps:
+            new_obs, reward, terminated, truncated, infos = self.collect_rollouts(obs, num_timesteps)
+            done = terminated or truncated
+            obs = new_obs
+
+            ep_rewards.append(reward)
+            ep_len += 1
+
+            if progress_bar:
+                pbar.update(1)
+
+            num_timesteps += 1
+
+            # Train the agent
+            if num_timesteps >= self.learning_starts:
+                critic_loss, actor_loss = self.train(self.gradient_steps, self.batch_size)
+                if self.logger and self._n_updates % log_interval == 0:
+                    self.logger.add_scalar("loss/critic_loss", critic_loss, self._n_updates)
+                    if actor_loss is not None:
+                        self.logger.add_scalar("loss/actor_loss", actor_loss, self._n_updates)
+
+            # Handle episode termination
+            if done:
+                obs, _ = self.env.reset()
+                self.action_noise.reset()
+                if self.logger:
+                    self.logger.add_scalar("rollout/ep_rew_mean", sum(ep_rewards), num_timesteps)
+                    self.logger.add_scalar("rollout/ep_len_mean", ep_len, num_timesteps)
+                ep_rewards = []
+                ep_len = 0
+
+            # Log progress
+            if not progress_bar and log_interval is not None and num_timesteps % log_interval == 0:
+                print(f"Timestep: {num_timesteps}/{total_timesteps}")
+
+        if progress_bar:
+            pbar.close()
+
+        return
+
+    def save(self, path: str) -> None:
+        th.save(
+            {
+                "actor": self.actor.state_dict(),
+                "critic": self.critic.state_dict(),
+                "actor_optimizer": self.actor_optimizer.state_dict(),
+                "critic_optimizer": self.critic_optimizer.state_dict(),
+            },
+            path,
+        )
+
+    @classmethod
+    def load(cls, path: str, env: Env, buffer: BaseBuffer, device: Union[th.device, str] = "auto") -> Self:
+        data = th.load(path, map_location=device)
+        model = cls(
+            env=env,
+            buffer=buffer,
+            device=device,
+        )
+        model.actor.load_state_dict(data["actor"])
+        model.critic.load_state_dict(data["critic"])
+        model.actor_optimizer.load_state_dict(data["actor_optimizer"])
+        model.critic_optimizer.load_state_dict(data["critic_optimizer"])
+        return model

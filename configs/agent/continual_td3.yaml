@@ -1,0 +1,4 @@
+model:
+  _target_: src.agents.continual_td3.ContinualTD3
+
+variant: vanilla # 'vanilla', 'stacked', or 'oracle', 'time'
