@@ -17,11 +17,11 @@ def custom_dir_resolver(agent_cfg: DictConfig, env_cfg: DictConfig):
     return run_name
 
 
-def product_resolver(a, b) -> float:
-    return float(a) * float(b)
+def int_product_resolver(a, b) -> int:
+    return int(a) * int(b)
 
 
-OmegaConf.register_new_resolver("product", product_resolver)
+OmegaConf.register_new_resolver("int_product", int_product_resolver)
 
 OmegaConf.register_new_resolver("train_dir", custom_dir_resolver)
 

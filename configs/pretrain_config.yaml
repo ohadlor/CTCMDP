@@ -11,7 +11,7 @@ gpu_slot_size: 4 # Jobs per GPU
 hydra:
   mode: MULTIRUN
   launcher:
-    n_jobs: ${product:${num_gpus},${gpu_slot_size}}
+    n_jobs: ${int_product:${num_gpus},${gpu_slot_size}}
   sweep:
     dir: outputs/pretrain
     subdir: ${train_dir:${agent},${env}}
