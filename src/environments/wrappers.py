@@ -6,7 +6,7 @@ from gymnasium import spaces
 import numpy as np
 from rrls._interface import ModifiedParamsEnv
 
-from .env_utils import bounds_to_space, remove_record_video_wrapper
+from .env_utils import bounds_to_space, remove_record_video_wrapper, find_attribute_in_stack
 
 
 class TCRMDP(Wrapper):
@@ -32,6 +32,8 @@ class TCRMDP(Wrapper):
                 "hidden": hidden_action_space,
             }
         )
+        self.set_params = find_attribute_in_stack(self, "set_params")
+        self.get_params = find_attribute_in_stack(self, "get_params")
 
     @property
     def state(self) -> spaces.Dict:
@@ -44,12 +46,12 @@ class TCRMDP(Wrapper):
 
     @property
     def hidden_state(self) -> np.ndarray:
-        params = self.env.get_params()
+        params = self.get_params()
         return np.array([params[key] for key in self.hidden_params])
 
     @hidden_state.setter
     def hidden_state(self, hidden_state: np.ndarray):
-        self.env.set_params(**dict(zip(self.hidden_params, hidden_state)))
+        self.set_params(**dict(zip(self.hidden_params, hidden_state)))
 
     def reset(self, *, seed=None, options=None):
         """
@@ -57,9 +59,9 @@ class TCRMDP(Wrapper):
         """
         obs, info = self.env.reset(seed=seed, options=options)
         if options is not None:
-            self.env.set_params(**options)
+            self.set_params(**options)
         else:
-            self.env.set_params()
+            self.set_params()
         hidden_obs = self.hidden_state
 
         full_obs = {"observed": obs, "hidden": hidden_obs}
@@ -121,6 +123,8 @@ class SplitActionObservationSpace(Wrapper):
         self.hidden_observation_space = env.observation_space["hidden"]
         self.hidden_action_space = env.action_space["hidden"]
 
+        self.copy_to_stationary_env = env.copy_to_stationary_env
+
     def step(self, action: np.ndarray, hidden_action: np.ndarray):
         dict_action = {"observed": action, "hidden": hidden_action}
         obs, reward, terminated, truncated, info = self.env.step(dict_action)
@@ -132,6 +136,10 @@ class SplitActionObservationSpace(Wrapper):
         info["hidden"] = obs["hidden"]
         return *obs.values(), info
 
+    @property
+    def hidden_state(self) -> np.ndarray:
+        return find_attribute_in_stack(self, "hidden_state")
+
 
 class FrozenHiddenObservation(Wrapper):
     def __init__(self, env: TCRMDP):
@@ -139,22 +147,16 @@ class FrozenHiddenObservation(Wrapper):
         self.observation_space = self.env.observation_space["observed"]
         self.action_space = self.env.action_space["observed"]
 
+        self.hidden_state = self.env.hidden_state
+
     def step(self, action: np.ndarray):
         dict_action = {"observed": action, "hidden": None}
         obs, reward, terminated, truncated, info = self.env.step(dict_action)
         return obs["observed"], reward, terminated, truncated, info
 
     def reset(self, *, seed=None, options=None):
-        state = self.env.state
-        obs, info = self.env.reset(seed=seed, options=options)
-        # The underlying reset will reset hidden_state. We set it back to the frozen value.
-        self.env.hidden_state = state["hidden"]
+        params = self.env.get_params()
+        obs, info = self.env.reset(seed=seed, options=params)
+        params_after = self.env.get_params()
+        assert params == params_after
         return obs["observed"], info
-
-    @property
-    def state(self) -> np.ndarray:
-        return self.env.unwrapped.state
-
-    @state.setter
-    def state(self, state: np.ndarray):
-        self.env.unwrapped.state = state

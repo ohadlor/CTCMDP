@@ -79,22 +79,25 @@ class M2TD3Policy:
 
         # Networks
         self.actor = self.make_actor()
+        self.critic = self.make_critic()
+        self.adversary = self.make_adversary()
+
+        self.create_targets()
+        self.create_optimizers(lr, optimizer_class, optimizer_kwargs)
+
+    def create_targets(self):
         self.actor_target = self.make_actor()
         self.actor_target.load_state_dict(self.actor.state_dict())
-
-        self.critic = self.make_critic()
         self.critic_target = self.make_critic()
         self.critic_target.load_state_dict(self.critic.state_dict())
-
-        self.adversary = self.make_adversary()
         self.adversary_target = self.make_adversary()
         self.adversary_target.load_state_dict(self.adversary.state_dict())
 
-        # Optimizers
+    def create_optimizers(self, lr, optimizer_class=th.optim.Adam, optimizer_kwargs=None):
         optimizer_kwargs = optimizer_kwargs or {}
-        self.actor.optimizer = optimizer_class(self.actor.parameters(), lr=lr, **optimizer_kwargs)
-        self.critic.optimizer = optimizer_class(self.critic.parameters(), lr=lr, **optimizer_kwargs)
-        self.adversary.optimizer = optimizer_class(self.adversary.parameters(), lr=lr, **optimizer_kwargs)
+        self.actor_optimizer = optimizer_class(self.actor.parameters(), lr=lr, **optimizer_kwargs)
+        self.critic_optimizer = optimizer_class(self.critic.parameters(), lr=lr, **optimizer_kwargs)
+        self.adversary_optimizer = optimizer_class(self.adversary.parameters(), lr=lr, **optimizer_kwargs)
 
     def set_training_mode(self, mode: bool):
         self.actor.train(mode)
@@ -125,25 +128,48 @@ class M2TD3Policy:
         return self.unscale_hidden_action(action)
 
     def predict_hidden_state(
-        self, hidden_action: Union[th.Tensor, np.ndarray], hidden_state: Union[th.Tensor, np.ndarray]
+        self, scaled_hidden_action: Union[th.Tensor, np.ndarray], hidden_state: Union[th.Tensor, np.ndarray]
     ) -> Union[th.Tensor, np.ndarray]:
-        hidden_state = hidden_state + hidden_action
+        unscaled_hidden_action = self.unscale_hidden_action(scaled_hidden_action)
+        hidden_state = hidden_state + unscaled_hidden_action
         if isinstance(hidden_state, th.Tensor):
             return hidden_state.clamp(self.hidden_state_space_tensor[0], self.hidden_state_space_tensor[1])
         else:
             return np.clip(hidden_state, self.hidden_state_space.low, self.hidden_state_space.high)
 
+    def unscale_action(self, squashed_action: Union[np.ndarray, th.Tensor]) -> Union[np.ndarray, th.Tensor]:
+        if isinstance(squashed_action, th.Tensor):
+            device = squashed_action.device
+            action_space_low_th = th.from_numpy(self.action_space.low).to(device)
+            action_space_high_th = th.from_numpy(self.action_space.high).to(device)
+            return action_space_low_th + (squashed_action + 1) * 0.5 * (action_space_high_th - action_space_low_th)
+        return self.action_space.low + (squashed_action + 1) * 0.5 * (self.action_space.high - self.action_space.low)
+
     def scale_action(self, action: np.ndarray) -> np.ndarray:
-        return self.actor.squash_action(action)
+        if np.array_equal(self.action_space.high, self.action_space.low):
+            return np.zeros_like(action)
+        return (action - self.action_space.low) / (self.action_space.high - self.action_space.low) * 2 - 1
 
-    def unscale_action(self, action: np.ndarray) -> np.ndarray:
-        return self.actor.unsquash_action(action)
+    def unscale_hidden_action(
+        self, squashed_hidden_action: Union[np.ndarray, th.Tensor]
+    ) -> Union[np.ndarray, th.Tensor]:
+        if isinstance(squashed_hidden_action, th.Tensor):
+            device = squashed_hidden_action.device
+            hidden_action_space_low_th = th.from_numpy(self.hidden_action_space.low).to(device)
+            hidden_action_space_high_th = th.from_numpy(self.hidden_action_space.high).to(device)
+            return hidden_action_space_low_th + (squashed_hidden_action + 1) * 0.5 * (
+                hidden_action_space_high_th - hidden_action_space_low_th
+            )
+        return self.hidden_action_space.low + (squashed_hidden_action + 1) * 0.5 * (
+            self.hidden_action_space.high - self.hidden_action_space.low
+        )
 
-    def scale_hidden_action(self, action: np.ndarray) -> np.ndarray:
-        return self.adversary.squash_action(action)
-
-    def unscale_hidden_action(self, action: np.ndarray) -> np.ndarray:
-        return self.adversary.unsquash_action(action)
+    def scale_hidden_action(self, hidden_action: np.ndarray) -> np.ndarray:
+        if np.array_equal(self.hidden_action_space.high, self.hidden_action_space.low):
+            return np.zeros_like(hidden_action)
+        return (hidden_action - self.hidden_action_space.low) / (
+            self.hidden_action_space.high - self.hidden_action_space.low
+        ) * 2 - 1
 
     def concat_obs_actor(
         self, observation: Union[th.Tensor, np.ndarray], hidden_state: Optional[Union[th.Tensor, np.ndarray]] = None

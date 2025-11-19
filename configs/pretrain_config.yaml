@@ -1,7 +1,21 @@
 defaults:
-  - pretrain: oracle_tc_m2td3
+  - pretrain: td3 # Arguments: td3, vanilla_tc_m2td3, stacked_tc_m2td3, oracle_tc_m2td3
+  - override hydra/launcher: joblib
   - _self_
 
 seed: 2671232903
-total_timesteps: 5e6
-record: false
+total_timesteps: 1e6
+num_gpus: 6 # Total physical GPUs available
+gpu_slot_size: 5 # Jobs per GPU
+
+hydra:
+  mode: MULTIRUN
+  launcher:
+    n_jobs: 2
+  sweep:
+    dir: outputs/pretrain
+    subdir: ${train_dir:${agent},${env}}
+  sweeper:
+    params:
+      pretrain: choice(td3, vanilla_tc_m2td3, stacked_tc_m2td3, oracle_tc_m2td3)
+      env.name: choice(ant, halfcheetah, hopper, humanoidstandup, walker2d)

@@ -1,10 +1,10 @@
 # @package _global_
 defaults:
   - /agent: tc_m2td3
-  - /env: robust/ant
   - _self_
 
 agent:
   variant: vanilla
 env:
+  name: halfcheetah
   radius: 0.01

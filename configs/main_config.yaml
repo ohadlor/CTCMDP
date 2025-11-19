@@ -9,6 +9,5 @@ defaults:
 seed: 2671232903
 iterations: 1
 env:
-  max_episode_steps: 1e5
+  max_episode_steps: 1e6
 bootstrap_model_path: null
-record: true

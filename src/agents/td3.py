@@ -1,4 +1,4 @@
-from typing import Union, Optional, Self
+from typing import Union, Optional
 from tqdm import tqdm
 
 import numpy as np
@@ -7,7 +7,7 @@ from gymnasium import Env
 from torch.nn import functional as F
 
 from src.buffers.replay_buffer import BaseBuffer
-from src.common.noise import OrnsteinUhlenbeckActionNoise
+from src.common.noise import NormalActionNoise
 from src.policies import TD3Policy
 from src.common.utils import polyak_update
 
@@ -23,9 +23,9 @@ class TD3(BaseAlgorithm):
     def __init__(
         self,
         env: Env,
-        lr: float = 1e-3,
+        lr: float = 3e-4,
         buffer_size: int = 1_000_000,
-        learning_starts: int = 100,
+        learning_starts: int = 10_000,
         batch_size: int = 256,
         gamma: float = 0.99,
         tau: float = 0.005,
@@ -47,7 +47,9 @@ class TD3(BaseAlgorithm):
         self.target_policy_noise = target_policy_noise
         self.target_noise_clip = target_noise_clip
         self.gradient_steps = gradient_steps
-        self.action_noise = OrnsteinUhlenbeckActionNoise(np.zeros(self.action_space.shape), sigma=0.5)
+        self.action_noise = NormalActionNoise(
+            mean=0, std=action_noise_std, dim=self.action_space.shape[0], rng=self.rng
+        )
 
         self.learning_starts = learning_starts
         self.replay_buffer = BaseBuffer(buffer_size, self.observation_space, self.action_space, self.device, self.rng)
@@ -75,8 +77,8 @@ class TD3(BaseAlgorithm):
         self.critic = self.policy.critic
         self.actor_target = self.policy.actor_target
         self.critic_target = self.policy.critic_target
-        self.actor_optimizer = self.policy.actor.optimizer
-        self.critic_optimizer = self.policy.critic.optimizer
+        self.actor_optimizer = self.policy.actor_optimizer
+        self.critic_optimizer = self.policy.critic_optimizer
 
     def train(self, gradient_steps: int, batch_size: int) -> tuple[float, Optional[float]]:
         self.policy.set_training_mode(True)
@@ -193,7 +195,7 @@ class TD3(BaseAlgorithm):
         num_timesteps = 0
 
         # Reset the environment
-        obs, _ = self.env.reset()
+        obs, _ = self.env.reset(seed=self.seed)
 
         if progress_bar:
             pbar = tqdm(total=total_timesteps)
@@ -224,7 +226,7 @@ class TD3(BaseAlgorithm):
 
             # Handle episode termination
             if done:
-                obs, _ = self.env.reset()
+                obs, _ = self.env.reset(seed=self.seed)
                 self.action_noise.reset()
                 if self.logger:
                     self.logger.add_scalar("rollout/ep_rew_mean", sum(ep_rewards), num_timesteps)
@@ -246,22 +248,19 @@ class TD3(BaseAlgorithm):
             {
                 "actor": self.actor.state_dict(),
                 "critic": self.critic.state_dict(),
-                "actor_optimizer": self.actor_optimizer.state_dict(),
-                "critic_optimizer": self.critic_optimizer.state_dict(),
             },
             path,
         )
 
-    @classmethod
-    def load(cls, path: str, env: Env, buffer: BaseBuffer, device: Union[th.device, str] = "auto") -> Self:
-        data = th.load(path, map_location=device)
-        model = cls(
-            env=env,
-            buffer=buffer,
-            device=device,
-        )
-        model.actor.load_state_dict(data["actor"])
-        model.critic.load_state_dict(data["critic"])
-        model.actor_optimizer.load_state_dict(data["actor_optimizer"])
-        model.critic_optimizer.load_state_dict(data["critic_optimizer"])
-        return model
+    def load(self, path: str):
+        """
+        Load a trained TD3 model from a file.
+
+        :param path: Path to the saved model.
+        :param env: The environment.
+        :param kwargs: Keyword arguments for TD3 constructor.
+        :return: A loaded TD3 model.
+        """
+        models = th.load(path, map_location=self.device)
+        self.policy.actor.load_state_dict(models["actor"])
+        self.policy.critic.load_state_dict(models["critic"])

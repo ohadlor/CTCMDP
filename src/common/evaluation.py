@@ -1,32 +1,41 @@
 from typing import Any, Callable, Optional
 
+from gymnasium import Env
 import numpy as np
+
 from src.agents.continual_algorithm import ContinualLearningAlgorithm
 from src.schedules.base_schedule import BaseSchedule
+from src.environments import check_for_wrapper
+from src.environments.wrappers import TCRMDP
 
 
 def evaluate_policy(
-    env,
     model,
+    env: Env,
     n_eval_episodes: int = 10,
     render: bool = False,
     callback: Optional[Callable[[dict[str, Any], dict[str, Any]], None]] = None,
     return_episode_rewards: bool = False,
     average_reward: bool = False,
+    seed: Optional[int] = None,
 ) -> np.ndarray:
     all_rewards = []
 
-    if n_eval_episodes == 0:
-        return np.array([])
+    if check_for_wrapper(env, TCRMDP):
+        env.reset()
+        env = env.copy_to_stationary_env()
+        hidden_state = env.hidden_state
 
     for _ in range(n_eval_episodes):
         episode_rewards = []
         done = False
-        observations, _ = env.reset()
+        observations, _ = env.reset(seed=seed)
         current_step = 0
 
         while not done:
             current_step += 1
+            if getattr(model, "oracle_actor", False):
+                observations = np.concatenate([observations, hidden_state])
             actions = model.predict(observations)
             next_observations, reward, terminated, truncated, _ = env.step(actions)
             episode_rewards.append(reward)
@@ -67,6 +76,7 @@ def evaluate_policy_hidden_state(
     callback: Optional[Callable[[dict[str, Any], dict[str, Any]], None]] = None,
     return_episode_rewards: bool = False,
     average_reward: bool = False,
+    seed: Optional[int] = None,
 ):
     all_rewards = []
 
@@ -76,7 +86,7 @@ def evaluate_policy_hidden_state(
     for _ in range(n_eval_episodes):
         episode_rewards = []
         done = False
-        observations, _ = env.reset()
+        observations, _ = env.reset(seed=seed)
         if isinstance(model, ContinualLearningAlgorithm):
             continual_args_dict = continual_args.asdict()
             continual_args_dict["stationary_env"] = env.copy_to_stationary_env()

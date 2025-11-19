@@ -20,6 +20,7 @@ dependencies = [
     "mujoco",
     "torch",
     "rrls",
+    "hydra-joblib-launcher",
 ]
 
 
@@ -29,7 +30,8 @@ dependencies = [
 # dev = ["pytest"]
 
 [tool.uv.sources]
-rrls = { path = "C:/Users/ohadl/Documents/PhD/Repositories/RRLS", editable = true }
+rrls = { git = "https://github.com/ohadlor/RRLS.git" }
+# rrls = { path = "C:/Users/ohadl/Documents/PhD/Repositories/RRLS", editable = false }
 torch = { index = "pytorch-cuda", marker = "sys_platform == 'win32'" }
 
 
@@ -37,3 +39,11 @@ torch = { index = "pytorch-cuda", marker = "sys_platform == 'win32'" }
 name = "pytorch-cuda"
 url = "https://download.pytorch.org/whl/cu126"
 explicit = true
+
+# Overrride dependencies dictates by RRLS
+[tool.uv]
+override-dependencies = [
+    "gymnasium",
+    "mujoco-py; sys_platform == 'never'",
+    "mujoco",
+]

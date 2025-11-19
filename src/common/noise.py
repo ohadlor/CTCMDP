@@ -22,13 +22,21 @@ class NormalActionNoise(BaseActionNoise):
     A Gaussian action noise
     """
 
-    def __init__(self, mean: np.ndarray = 0.0, std: np.ndarray = 0.1, rng: Optional[np.random.Generator] = None):
+    def __init__(
+        self,
+        mean: np.ndarray = 0.0,
+        std: np.ndarray = 0.1,
+        dim: Optional[int] = None,
+        rng: Optional[np.random.Generator] = None,
+    ):
         super().__init__()
         self.mean = mean
         self.std = std
+        self.dim = dim
         self.rng = rng if rng is not None else np.random.default_rng()
 
-    def __call__(self, dim: int) -> np.ndarray:
+    def __call__(self, dim: Optional[int] = None) -> np.ndarray:
+        dim = self.dim if dim is None else dim
         return self.rng.normal(self.mean, self.std, size=dim).astype(np.float32)
 
     def reset(self) -> None:

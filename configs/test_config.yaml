@@ -1,0 +1,10 @@
+defaults:
+  - pretrain: td3 # Arguments: td3, vanilla_tc_m2td3, stacked_tc_m2td3, oracle_tc_m2td3
+  - _self_
+
+seed: 2671232903
+total_timesteps: 11000
+
+hydra:
+  run:
+    dir: outputs/${train_dir:${agent},${env}}

@@ -1,0 +1,4 @@
+_target_: src.schedules.stochastic.ReflectedBrownianMotionSchedule
+l2_radius: 0.1
+volatility: 0.05
+bounds: [-1.0, 0.3]

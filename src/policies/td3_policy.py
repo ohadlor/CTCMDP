@@ -1,3 +1,5 @@
+from typing import Union
+
 import torch as th
 from torch import nn
 import numpy as np
@@ -48,8 +50,8 @@ class TD3Policy:
 
         # Optimizers
         optimizer_kwargs = optimizer_kwargs or {}
-        self.actor.optimizer = optimizer_class(self.actor.parameters(), lr=lr, **optimizer_kwargs)
-        self.critic.optimizer = optimizer_class(self.critic.parameters(), lr=lr, **optimizer_kwargs)
+        self.actor_optimizer = optimizer_class(self.actor.parameters(), lr=lr, **optimizer_kwargs)
+        self.critic_optimizer = optimizer_class(self.critic.parameters(), lr=lr, **optimizer_kwargs)
 
     def set_training_mode(self, mode: bool):
         self.actor.train(mode)
@@ -69,8 +71,15 @@ class TD3Policy:
             action = self.actor(obs).cpu().numpy().reshape((-1, *self.action_space.shape)).squeeze()
         return self.unscale_action(action)
 
-    def scale_action(self, action: np.ndarray) -> np.ndarray:
-        return self.actor.squash_action(action)
+    def unscale_action(self, squashed_action: Union[np.ndarray, th.Tensor]) -> Union[np.ndarray, th.Tensor]:
+        if isinstance(squashed_action, th.Tensor):
+            device = squashed_action.device
+            action_space_low_th = th.from_numpy(self.action_space.low).to(device)
+            action_space_high_th = th.from_numpy(self.action_space.high).to(device)
+            return action_space_low_th + (squashed_action + 1) * 0.5 * (action_space_high_th - action_space_low_th)
+        return self.action_space.low + (squashed_action + 1) * 0.5 * (self.action_space.high - self.action_space.low)
 
-    def unscale_action(self, action: np.ndarray) -> np.ndarray:
-        return self.actor.unsquash_action(action)
+    def scale_action(self, action: np.ndarray) -> np.ndarray:
+        if np.array_equal(self.action_space.high, self.action_space.low):
+            return np.zeros_like(action)
+        return (action - self.action_space.low) / (self.action_space.high - self.action_space.low) * 2 - 1

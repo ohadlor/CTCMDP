@@ -27,6 +27,7 @@ class BaseAlgorithm(ABC):
         self.tensorboard_log = tensorboard_log
         self.device = "cuda" if th.cuda.is_available() and device == "auto" else "cpu"
         self.logger: Optional[SummaryWriter] = None
+        self.seed = seed
         self.rng = np.random.default_rng(seed)
         th.manual_seed(seed)
 

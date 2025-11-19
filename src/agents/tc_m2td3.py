@@ -34,9 +34,9 @@ class TCM2TD3(BaseAlgorithm):
         policy_delay: int = 2,
         target_policy_noise: float = 0.2,
         target_noise_clip: float = 0.5,
+        oracle_actor: bool = False,
         device: Union[th.device, str] = "auto",
         tensorboard_log: str = "runs",
-        oracle_actor: bool = False,
         seed: Optional[int] = None,
     ):
         # Action and state spaces are dicts that are split into hidden and observed for the policy.
@@ -62,7 +62,7 @@ class TCM2TD3(BaseAlgorithm):
         self.target_noise_clip = target_noise_clip
         self.oracle_actor = oracle_actor
         self.gradient_steps = gradient_steps
-        self.action_noise = NormalActionNoise(mean=0, std=action_noise_std)
+        self.action_noise = NormalActionNoise(mean=0, std=action_noise_std, rng=self.rng)
         self.learning_starts = learning_starts
 
         self._setup_model()
@@ -77,6 +77,7 @@ class TCM2TD3(BaseAlgorithm):
             self.hidden_observation_space,
             self.hidden_action_space,
             self.lr,
+            oracle_actor=self.oracle_actor,
             device=self.device,
         )
 
@@ -87,9 +88,9 @@ class TCM2TD3(BaseAlgorithm):
         self.actor_target = self.policy.actor_target
         self.adversary_target = self.policy.adversary_target
         self.critic_target = self.policy.critic_target
-        self.actor_optimizer = self.policy.actor.optimizer
-        self.adversary_optimizer = self.policy.adversary.optimizer
-        self.critic_optimizer = self.policy.critic.optimizer
+        self.actor_optimizer = self.policy.actor_optimizer
+        self.adversary_optimizer = self.policy.adversary_optimizer
+        self.critic_optimizer = self.policy.critic_optimizer
 
     def train(self, gradient_steps: int, batch_size: int) -> None:
         self.policy.set_training_mode(True)
@@ -110,6 +111,7 @@ class TCM2TD3(BaseAlgorithm):
                     replay_data.next_observations, replay_data.next_hidden_states, next_actions
                 )
                 next_hidden_actions = (self.adversary_target(next_adversary_obs) + hidden_noise).clamp(-1, 1)
+
                 # Next_hidden_state is a sufficient statistic for (hidden_state, hidden_action)
                 next_next_hidden_states = self.policy.predict_hidden_state(
                     next_hidden_actions, replay_data.next_hidden_states
@@ -120,7 +122,7 @@ class TCM2TD3(BaseAlgorithm):
                 next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
                 target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
 
-            critic_obs = self.policy.concat_obs_critic(replay_data.observations, replay_data.hidden_states)
+            critic_obs = self.policy.concat_obs_critic(replay_data.observations, replay_data.next_hidden_states)
             current_q_values = self.critic(critic_obs, replay_data.actions)
             critic_loss = sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
             critic_losses.append(critic_loss.item())
@@ -133,12 +135,7 @@ class TCM2TD3(BaseAlgorithm):
                 # Train agent
                 agent_obs = self.policy.concat_obs_actor(replay_data.observations, replay_data.hidden_states)
                 agent_actions = self.actor(agent_obs)
-                adversary_obs = self.policy.concat_obs_adversary(
-                    replay_data.observations, replay_data.hidden_states, agent_actions
-                )
-                hidden_actions = self.adversary(adversary_obs).detach()
-                next_hidden_states = self.policy.predict_hidden_state(hidden_actions, replay_data.hidden_states)
-                critic_obs = self.policy.concat_obs_critic(replay_data.observations, next_hidden_states)
+                critic_obs = self.policy.concat_obs_critic(replay_data.observations, replay_data.next_hidden_states)
                 agent_loss = -self.critic.q1_forward(critic_obs, agent_actions).mean()
                 actor_losses.append(agent_loss.item())
 
@@ -147,14 +144,13 @@ class TCM2TD3(BaseAlgorithm):
                 self.actor_optimizer.step()
 
                 # Train adversary
-                agent_actions = self.actor(agent_obs).detach()
                 adversary_obs = self.policy.concat_obs_adversary(
-                    replay_data.observations, replay_data.hidden_states, agent_actions
+                    replay_data.observations, replay_data.hidden_states, replay_data.actions
                 )
                 hidden_actions = self.adversary(adversary_obs)
                 next_hidden_states = self.policy.predict_hidden_state(hidden_actions, replay_data.hidden_states)
                 critic_obs = self.policy.concat_obs_critic(replay_data.observations, next_hidden_states)
-                adversary_loss = self.critic.q1_forward(critic_obs, agent_actions).mean()
+                adversary_loss = self.critic.q1_forward(critic_obs, replay_data.actions).mean()
                 adversary_losses.append(adversary_loss.item())
 
                 self.adversary_optimizer.zero_grad()
@@ -268,7 +264,7 @@ class TCM2TD3(BaseAlgorithm):
         num_timesteps = 0
 
         # Reset the environment
-        obs, hidden_state, _ = self.env.reset()
+        obs, hidden_state, _ = self.env.reset(seed=self.seed)
 
         if progress_bar:
             pbar = tqdm(total=total_timesteps)
@@ -302,7 +298,7 @@ class TCM2TD3(BaseAlgorithm):
 
             # Handle episode termination
             if done:
-                obs, hidden_state, _ = self.env.reset()
+                obs, hidden_state, _ = self.env.reset(seed=self.seed)
                 self.action_noise.reset()
                 if self.logger:
                     self.logger.add_scalar("rollout/ep_rew_mean", sum(ep_rewards), num_timesteps)
@@ -325,25 +321,20 @@ class TCM2TD3(BaseAlgorithm):
                 "actor": self.actor.state_dict(),
                 "adversary": self.adversary.state_dict(),
                 "critic": self.critic.state_dict(),
-                "actor_optimizer": self.actor_optimizer.state_dict(),
-                "adversary_optimizer": self.adversary_optimizer.state_dict(),
-                "critic_optimizer": self.critic_optimizer.state_dict(),
             },
             path,
         )
 
-    @classmethod
-    def load(cls, path: str, env: Env, buffer: HiddenReplayBuffer, device: Union[th.device, str] = "auto") -> "TCM2TD3":
-        data = th.load(path, map_location=device)
-        model = cls(
-            env=env,
-            buffer=buffer,
-            device=device,
-        )
-        model.actor.load_state_dict(data["actor"])
-        model.adversary.load_state_dict(data["adversary"])
-        model.critic.load_state_dict(data["critic"])
-        model.actor_optimizer.load_state_dict(data["actor_optimizer"])
-        model.adversary_optimizer.load_state_dict(data["adversary_optimizer"])
-        model.critic_optimizer.load_state_dict(data["critic_optimizer"])
-        return model
+    def load(self, path: str):
+        """
+        Load a trained TCM2TD3 model from a file.
+
+        :param path: Path to the saved model.
+        :param env: The environment.
+        :param kwargs: Keyword arguments for TCM2TD3 constructor.
+        :return: A loaded TCM2TD3 model.
+        """
+        models = th.load(path, map_location=self.device)
+        self.policy.actor.load_state_dict(models["actor"])
+        self.policy.adversary.load_state_dict(models["adversary"])
+        self.policy.critic.load_state_dict(models["critic"])
