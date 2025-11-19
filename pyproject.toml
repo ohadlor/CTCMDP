@@ -20,7 +20,7 @@ dependencies = [
     "mujoco",
     "torch",
     "rrls",
-    "hydra-joblib-launcher",
+    "hydra-submitit-launcher",
 ]
 
 

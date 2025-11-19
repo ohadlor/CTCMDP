@@ -1,17 +1,23 @@
 defaults:
   - pretrain: td3 # Arguments: td3, vanilla_tc_m2td3, stacked_tc_m2td3, oracle_tc_m2td3
-  - override hydra/launcher: joblib
+  - override hydra/launcher: submitit_local
   - _self_
 
 seed: 2671232903
 total_timesteps: 1e6
 num_gpus: 6 # Total physical GPUs available
 gpu_slot_size: 4 # Jobs per GPU
+parallel_task: ${int_product:${num_gpus},${gpu_slot_size}}
 
 hydra:
   mode: MULTIRUN
   launcher:
-    n_jobs: ${int_product:${num_gpus},${gpu_slot_size}}
+    timeout_min: 6000
+    cpus_per_task: 10
+    gpus_per_node: ${num_gpus}
+    tasks_per_node: ${parallel_task}
+    mem_gb: ${int_product:${parallel_task},4}
+    nodes: 1
   sweep:
     dir: outputs/pretrain
     subdir: ${train_dir:${agent},${env}}
