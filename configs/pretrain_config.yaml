@@ -6,7 +6,7 @@ defaults:
 seed: 2671232903
 total_timesteps: 1e6
 num_gpus: 6 # Total physical GPUs available
-gpu_slot_size: 5 # Jobs per GPU
+gpu_slot_size: 4 # Jobs per GPU
 
 hydra:
   mode: MULTIRUN

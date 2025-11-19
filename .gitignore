@@ -71,6 +71,7 @@ ipython_config.py
 .env
 .venv
 *.lock
+cli_commands.txt
 
 
 # mypy

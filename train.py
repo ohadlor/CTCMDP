@@ -20,16 +20,18 @@ def custom_dir_resolver(agent_cfg: DictConfig, env_cfg: DictConfig):
 OmegaConf.register_new_resolver("train_dir", custom_dir_resolver)
 
 
-# TODO: verify
 def set_torch_gpu(job_num: int, n_gpus: int = 1, jobs_per_gpu: int = 1):
-    gpu_id = job_num % (n_gpus * jobs_per_gpu) // jobs_per_gpu
+    gpu_id = (job_num // jobs_per_gpu) % n_gpus
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
 
 
 # Training function to create pretrained networks for TD3, vanilla-TC-M2TD3, stacked-TC-M2TD3, oracle-TC-M2TD3
 @hydra.main(config_path="configs", config_name="test_config", version_base=None)
 def main(cfg: DictConfig):
-    # Imports in main to make multiprocessing easier
+    if cfg.get("job", None) is not None:
+        job_id = cfg.job.num
+        set_torch_gpu(job_id, cfg.n_gpus, cfg.gpu_slot_size)
+    # Imports in main to make multiprocessing easier, and after setting gpu
     from src.environments import create_env
     from src.agents.base_algorithm import BaseAlgorithm
     from src.common.evaluation import evaluate_policy
@@ -38,9 +40,6 @@ def main(cfg: DictConfig):
     cool_name = os.path.basename(output_dir).split("_")[1]
 
     print(f"Results will be saved to {output_dir}")
-    if cfg.get("job", None) is not None:
-        job_id = cfg.job.num
-        set_torch_gpu(job_id, cfg.n_gpus, cfg.gpu_slot_size)
 
     env, _ = create_env(cfg, output_dir)
 

@@ -31,7 +31,6 @@ dependencies = [
 
 [tool.uv.sources]
 rrls = { git = "https://github.com/ohadlor/RRLS.git" }
-# rrls = { path = "C:/Users/ohadl/Documents/PhD/Repositories/RRLS", editable = false }
 torch = { index = "pytorch-cuda", marker = "sys_platform == 'win32'" }
 
 
