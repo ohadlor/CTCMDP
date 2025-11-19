@@ -16,7 +16,7 @@ dependencies = [
     "tensorboard",
     "torch-tb-profiler>=0.2.0",
     "gymnasium>=1.1.1",
-    "stable-baselines3",
+    "stable-baselines3>=2.3.0",
     "mujoco",
     "torch",
     "rrls",
@@ -31,12 +31,12 @@ dependencies = [
 
 [tool.uv.sources]
 rrls = { git = "https://github.com/ohadlor/RRLS.git" }
-torch = { index = "pytorch-cuda", marker = "sys_platform == 'win32'" }
+torch = { index = "pytorch-cuda", marker = "sys_platform == 'win32' or sys_platform == 'linux'" }
 
 
 [[tool.uv.index]]
 name = "pytorch-cuda"
-url = "https://download.pytorch.org/whl/cu126"
+url = "https://download.pytorch.org/whl/cu121"
 explicit = true
 
 # Overrride dependencies dictates by RRLS
