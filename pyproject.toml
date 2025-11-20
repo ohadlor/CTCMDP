@@ -21,6 +21,7 @@ dependencies = [
     "torch",
     "rrls",
     "hydra-submitit-launcher",
+    "hydra-joblib-launcher",
 ]
 
 

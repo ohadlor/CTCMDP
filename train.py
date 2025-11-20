@@ -34,15 +34,16 @@ def set_torch_gpu(job_num: int, n_gpus: int = 1, jobs_per_gpu: int = 1):
 # Training function to create pretrained networks for TD3, vanilla-TC-M2TD3, stacked-TC-M2TD3, oracle-TC-M2TD3
 @hydra.main(config_path="configs", config_name="test_config", version_base=None)
 def main(cfg: DictConfig):
-    if cfg.get("job", None) is not None:
-        job_id = cfg.job.num
-        set_torch_gpu(job_id, cfg.n_gpus, cfg.gpu_slot_size)
+    hydra_cfg = HydraConfig.get()
+    job_id = hydra_cfg.job.get("num", None)
+    if job_id is not None:
+        set_torch_gpu(job_id, cfg.num_gpus, cfg.gpu_slot_size)
     # Imports in main to make multiprocessing easier, and after setting gpu
     from src.environments import create_env
     from src.agents.base_algorithm import BaseAlgorithm
     from src.common.evaluation import evaluate_policy
 
-    output_dir = HydraConfig.get().runtime.output_dir
+    output_dir = hydra_cfg.runtime.output_dir
     cool_name = os.path.basename(output_dir).split("_")[1]
 
     print(f"Results will be saved to {output_dir}")
