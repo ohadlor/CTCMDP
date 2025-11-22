@@ -203,3 +203,7 @@ class M2TD3Policy:
             return np.concatenate([observation, hidden_state, action], axis=-1)
         else:
             return th.cat([observation, hidden_state, action], dim=1)
+
+    def load_actor(self, path: str):
+        self.actor.load_state_dict(th.load(path))
+        self.actor_target.load_state_dict(th.load(path))

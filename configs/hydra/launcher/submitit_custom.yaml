@@ -5,6 +5,6 @@ timeout_min: 6000
 cpus_per_task: 10
 gpus_per_node: ${num_gpus}
 tasks_per_node: ${parallel_task}
-mem_gb: ${int_product:${parallel_task},4}
+mem_gb: 4
 nodes: 1
 name: ${hydra.job.name}

@@ -1,13 +1,25 @@
-_convert_: all
-
 defaults:
-  - agent: continual_td3
-  - env: mountain_car
   - experiments: null
+  - agent: pretrainted_continual_td3.td3
+  - schedule: brownian
+  - override hydra/launcher: submitit_custom
   - _self_
 
-seed: 2671232903
-iterations: 1
+master_seed: 2671232903
 env:
-  max_episode_steps: 1e6
-bootstrap_model_path: null
+  max_episode_steps: 1e5
+iterations: 10
+
+num_gpus: 6 # Total physical GPUs available
+gpu_slot_size: 4 # Jobs per GPU
+parallel_task: ${int_product:${num_gpus},${gpu_slot_size}}
+
+hydra:
+  mode: MULTIRUN
+  sweep:
+    dir: outputs/${experiment_name}
+    subdir: ${train_dir:${agent},${env}}
+  sweeper:
+    params:
+      env.name: choice(ant, halfcheetah, hopper, humanoidstandup, walker2d)
+      seed: ${seed_sequence:${iterations},${master_seed}}

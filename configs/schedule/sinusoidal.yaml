@@ -1,4 +1,3 @@
 # @package schedule
 _target_: src.schedules.deterministic.SinusoidalSchedule
-l2_radius: 0.1
 period: 500

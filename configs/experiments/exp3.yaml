@@ -1,0 +1,9 @@
+# @package _global_
+# Sweep over radius and sim discount factor
+
+experiment_name: discount_radius
+hydra:
+  sweeper:
+    params:
+      env.radius: choice(0.1, 0.5, 1.0)
+      actor.sim_discount_factor: choice(0.1, 0.5, 1.0)

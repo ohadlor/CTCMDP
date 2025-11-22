@@ -16,7 +16,6 @@ dependencies = [
     "tensorboard",
     "torch-tb-profiler>=0.2.0",
     "gymnasium>=1.1.1",
-    "stable-baselines3>=2.3.0",
     "mujoco",
     "torch",
     "rrls",

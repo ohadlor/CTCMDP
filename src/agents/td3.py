@@ -36,6 +36,7 @@ class TD3(BaseAlgorithm):
         target_noise_clip: float = 0.5,
         device: Union[th.device, str] = "auto",
         tensorboard_log: str = "runs",
+        policy_path: Optional[str] = None,
         seed: Optional[int] = None,
     ):
         super().__init__(env.observation_space, env.action_space, lr, device, seed, tensorboard_log)
@@ -59,6 +60,9 @@ class TD3(BaseAlgorithm):
         self.critic_target = None
         self.actor_optimizer = None
         self.critic_optimizer = None
+
+        if policy_path is not None:
+            self.load(policy_path)
 
         self._n_updates = 0
         self._setup_model()

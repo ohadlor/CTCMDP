@@ -111,8 +111,12 @@ class TCRMDP(Wrapper):
 
         # Remove the recording wrapper if there is one
         new_env = remove_record_video_wrapper(new_env)
-
-        return FrozenHiddenObservation(new_env)
+        stationary_env = FrozenHiddenObservation(new_env)
+        # Designed for mujoco envs
+        position = self.data.qpos.flatten()
+        velocity = self.data.qvel.flatten()
+        stationary_env.base_state = (position[2:], velocity)
+        return stationary_env
 
 
 class SplitActionObservationSpace(Wrapper):
@@ -148,6 +152,7 @@ class FrozenHiddenObservation(Wrapper):
         self.action_space = self.env.action_space["observed"]
 
         self.hidden_state = self.env.hidden_state
+        self.base_state = None
 
     def step(self, action: np.ndarray):
         dict_action = {"observed": action, "hidden": None}
@@ -155,8 +160,11 @@ class FrozenHiddenObservation(Wrapper):
         return obs["observed"], reward, terminated, truncated, info
 
     def reset(self, *, seed=None, options=None):
+        # Designed for mujoco envs
         params = self.env.get_params()
         obs, info = self.env.reset(seed=seed, options=params)
+        self.env.unwrapped.set_state(*self.base_state)
+        obs = self.env.unwrapped._get_obs()
         params_after = self.env.get_params()
         assert params == params_after
-        return obs["observed"], info
+        return obs, info

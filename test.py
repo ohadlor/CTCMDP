@@ -1,59 +1,69 @@
-from datetime import datetime
+import os
 
 import hydra
-import numpy as np
+from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 
-from src.agents.continual_td3 import ContinualTD3
-from src.environments import create_env
-from src.schedules import HiddenActionSelector
-from src.common.evaluation import evaluate_policy
+from src.common.managment import set_torch_gpu
 
 
-# TODO: implment the following agent classes: continual_td3, vanilla_td3, tc-m2td3
-
-
+# TODO: toggle continuous learning
 @hydra.main(config_path="configs", config_name="main_config", version_base=None)
 def main(cfg: DictConfig):
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    run_name = (
-        f"{timestamp}_{cfg.agent.variant}_{cfg.schedule._target_.split('.')[-1]}"
-        + f"_{cfg.reward._target_.split('.')[-1]}"
+    hydra_cfg = HydraConfig.get()
+    job_id = hydra_cfg.job.get("num", None)
+    if job_id is not None:
+        set_torch_gpu(job_id, cfg.num_gpus, cfg.gpu_slot_size)
+    # Imports in main to make multiprocessing easier, and after setting gpu
+    from src.agents.td3 import TD3
+    from src.environments import create_env
+    from src.schedules import BaseActionSchedule
+    from src.common.evaluation import evaluate_policy_hidden_state
+
+    output_dir = hydra_cfg.runtime.output_dir
+    cool_name = os.path.basename(output_dir).split("_")[1]
+
+    print(f"Results will be saved to {output_dir}")
+
+    env = create_env(cfg, output_dir)
+
+    agent_params = {"seed": cfg.seed, "env": env, "tensorboard_log": output_dir}
+    if "continual" in cfg.agent.name and cfg.agent.get("bootstrap", None) is not None:
+        agent_params["actor_path"] = os.path.join("pretrained_models", cfg.env.name, cfg.agent.bootstrap)
+        agent_params["critic_path"] = os.path.join("pretrained_models", cfg.env.name, "td3")
+    elif cfg.agent.get("bootstrap", None) is not None:
+        bootstrap_path = os.path.join("pretrained_models", cfg.env.name, cfg.agent.bootstrap)
+        agent_params["actor_path"] = bootstrap_path
+
+    agent: TD3 = hydra.utils.instantiate(cfg.agent.model, **agent_params, _convert_="all")
+
+    hidden_action_schedule: BaseActionSchedule = hydra.utils.instantiate(
+        cfg.schedule, action_space=env.hidden_action_space, state_space=env.state_space, rng=agent.rng
     )
-    run_dir = f"runs/{run_name}"
-    rng = np.random.default_rng(cfg.seed)
 
-    env, simulator = create_env(cfg, run_dir)
-
-    # Define the hidden action selection policy/schedule
-    hidden_policy: HiddenActionSelector = hydra.utils.instantiate(
-        cfg.schedule, rng=rng, hidden_dim=env.action_space["hidden"].shape[0]
+    setup_string = (
+        f"Starting evaluation of {cool_name},"
+        + f"\nEnv: {cfg.env.name}\nAgent: {cfg.agent.model._target_.split('.')[-1]}"
     )
+    if cfg.actor.bootstrap_from is not None:
+        setup_string += f", bootstrapped from: {cfg.actor.bootstrap_from}"
+    print(setup_string)
 
-    agent: ContinualTD3 = hydra.utils.instantiate(
-        cfg.agent,
+    print("Setup complete. Starting continual learning...")
+
+    mean_reward, std_reward = evaluate_policy_hidden_state(
+        model=agent,
         env=env,
-        policy="MlpPolicy",
-        simulator_env=simulator,
+        adversary_policy=hidden_action_schedule,
+        iterations=cfg.iterations,
         seed=cfg.seed,
-        _init_setup_model=True,
     )
 
-    # Start the agent with a pretrained policy
-    if cfg.bootstrap_model_path:
-        print(f"Bootstrapping agent from: {cfg.bootstrap_model_path}")
-        agent.load(cfg.bootstrap_model_path)
+    print(f"Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
 
-    print("Setup complete. Starting training loop...")
-
-    evaluate_policy(
-        agent,
-        env,
-        adversary_policy=hidden_policy,
-        is_continual=cfg.agent.is_continual,
-        n_eval_episodes=cfg.n_eval_episodes,
-        render=cfg.render,
-    )
+    # Save evaluation results
+    with open(f"{output_dir}/evaluation.txt", "w") as f:
+        f.write(f"Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
 
 
 if __name__ == "__main__":

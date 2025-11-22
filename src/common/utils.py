@@ -21,3 +21,8 @@ def safe_mean(a_list: Iterable):
         return np.array([])
     else:
         return np.array(a_list).mean()
+
+
+def get_boostrap_path(agent_name: str, env_name: str) -> str:
+    path = os.path.join("pretrained_models", env_name, agent_name)
+    return path

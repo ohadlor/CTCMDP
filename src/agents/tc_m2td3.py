@@ -35,6 +35,7 @@ class TCM2TD3(BaseAlgorithm):
         target_policy_noise: float = 0.2,
         target_noise_clip: float = 0.5,
         oracle_actor: bool = False,
+        policy_path: Optional[str] = None,
         device: Union[th.device, str] = "auto",
         tensorboard_log: str = "runs",
         seed: Optional[int] = None,
@@ -64,6 +65,9 @@ class TCM2TD3(BaseAlgorithm):
         self.gradient_steps = gradient_steps
         self.action_noise = NormalActionNoise(mean=0, std=action_noise_std, rng=self.rng)
         self.learning_starts = learning_starts
+
+        if policy_path is not None:
+            self.load(policy_path)
 
         self._setup_model()
         self._make_aliases()

@@ -6,7 +6,7 @@ from .env_utils import get_param_bounds, name_to_env_id
 from .wrappers import TCRMDP, SplitActionObservationSpace
 
 
-def create_env(cfg: DictConfig, run_dir: str) -> tuple[gym.Env, gym.Env]:
+def create_env(cfg: DictConfig, run_dir: str) -> gym.Env:
     """Creates the environment, simulator, and hidden policy."""
     # Define gym env
     is_rrls = hasattr(cfg.env, "radius")
@@ -25,7 +25,6 @@ def create_env(cfg: DictConfig, run_dir: str) -> tuple[gym.Env, gym.Env]:
     if cfg.env.get("time_aware", False):
         env = TimeAwareObservation(env)
 
-    simulator = None
     # Create the augmented environment with hidden variable
     if is_rrls:
         agent_variant = cfg.agent.get("variant", "")
@@ -35,4 +34,4 @@ def create_env(cfg: DictConfig, run_dir: str) -> tuple[gym.Env, gym.Env]:
         env = TCRMDP(env, param_bounds, cfg.env.radius)
         env = SplitActionObservationSpace(env)
 
-    return env, simulator
+    return env

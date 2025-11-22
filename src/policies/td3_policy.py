@@ -83,3 +83,11 @@ class TD3Policy:
         if np.array_equal(self.action_space.high, self.action_space.low):
             return np.zeros_like(action)
         return (action - self.action_space.low) / (self.action_space.high - self.action_space.low) * 2 - 1
+
+    def load_critic(self, path: str):
+        self.critic.load_state_dict(th.load(path))
+        self.critic_target.load_state_dict(self.critic.state_dict())
+
+    def load_actor(self, path: str):
+        self.actor.load_state_dict(th.load(path))
+        self.actor_target.load_state_dict(self.actor.state_dict())

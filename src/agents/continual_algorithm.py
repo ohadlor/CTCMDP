@@ -2,43 +2,46 @@ from typing import Optional
 
 import numpy as np
 
-
 from src.environments.wrappers import FrozenHiddenObservation
+
 from .base_algorithm import BaseAlgorithm
 
 
-class ContinualLearningAlgorithm(BaseAlgorithm):
-    def predict(
-        self,
-        observation: np.ndarray,
-        state: Optional[tuple[np.ndarray, ...]] = None,
-        episode_start: Optional[np.ndarray] = None,
-        deterministic: bool = False,
-        continual_gradient_steps: int = 1,
-        continual_batch_size: int = 256,
-        sample: Optional[dict] = None,
-        stationary_env: Optional[FrozenHiddenObservation] = None,
-    ) -> tuple[np.ndarray, Optional[tuple[np.ndarray, ...]]]:
-        """
-        Get the policy action from an observation.
-        Additionally, perform a training step if in continual learning mode and a sample is provided.
-        """
-        action, state = super().predict(observation, state, episode_start, deterministic)
+def make_continual_learner(
+    base_algorithm: type[BaseAlgorithm], gradient_steps: int = 1, batch_size: int = 256
+) -> type[BaseAlgorithm]:
 
-        self.stationary_env = stationary_env
+    class ContinualLearningAlgorithm(base_algorithm):
+        is_continual_learner = True
 
-        if sample is not None:
-            # A transition has just occurred, add it to the replay buffer.
-            self.replay_buffer.add(
-                obs=sample["obs"],
-                next_obs=sample["next_obs"],
-                action=sample["action"],
-                reward=sample["reward"],
-                done=sample["done"],
-            )
+        def __init__(self, gradient_steps: int = gradient_steps, batch_size: int = batch_size, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.gradient_steps = gradient_steps
+            self.batch_size = batch_size
+            self.stationary_env = None
 
-        # Perform a training step
-        if self.num_timesteps >= self.learning_starts and self.replay_buffer.size() > 0:
-            self.train(gradient_steps=continual_gradient_steps, batch_size=continual_batch_size)
+        def predict(
+            self,
+            observation: np.ndarray,
+            sample: Optional[dict] = None,
+            stationary_env: Optional[FrozenHiddenObservation] = None,
+        ) -> np.ndarray:
+            """
+            Get the policy action from an observation.
+            Additionally, perform a training step if in continual learning mode and a sample is provided.
+            """
+            action = super().predict(observation)
 
-        return action, state
+            self.stationary_env = stationary_env
+
+            if sample is not None:
+                # A transition has just occurred, add it to the replay buffer.
+                self.replay_buffer.add(**sample)
+
+            # Perform a training step
+            if self.num_timesteps >= self.learning_starts and self.replay_buffer.size() > 0:
+                self.train(gradient_steps=self.gradient_steps, batch_size=self.batch_size)
+
+            return action
+
+    return ContinualLearningAlgorithm

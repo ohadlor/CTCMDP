@@ -9,14 +9,16 @@ from .hidden_action_selector import HiddenActionSelector
 
 # TODO: clip actions, make into actor-critic agent
 class AdversarialSchedule(HiddenActionSelector):
-    def __init__(self, hidden_dim: int, l2_radius: float, obs_dim: int, psi_dim: int, model_path: str, rng: Generator):
-        super().__init__(hidden_dim, l2_radius, rng=rng)
+    def __init__(self, action_space: spaces.Box, observation_space: spaces.Dict, model_path: str, rng: Generator):
+        super().__init__(action_space, observation_space, rng=rng)
+        obs_dim = observation_space["observation"].shape[0]
+        psi_dim = observation_space["hidden"].shape[0]
         self.policy = nn.Sequential(
             nn.Linear(obs_dim + psi_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(64, hidden_dim),
+            nn.Linear(64, action_space.shape[0]),
             nn.Tanh(),
         )
         # try: self.policy.load_state_dict(torch.load(model_path))
@@ -24,6 +26,10 @@ class AdversarialSchedule(HiddenActionSelector):
 
         self.policy.train()
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=1e-4)
+
+    @property
+    def l2_radius(self):
+        return self.action_space.high[0]
 
     def _action_selection(self, obs: spaces.Dict) -> np.ndarray:
         with torch.no_grad():

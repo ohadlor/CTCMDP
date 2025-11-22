@@ -1,2 +1,0 @@
-model:
-  _target_: src.agents.sb3_td3.TD3
