@@ -140,3 +140,24 @@ def name_to_env_id(name: str, is_rrls: bool = True) -> str:
         return robust_map[name]
     else:
         return vanilla_map[name]
+
+
+def remove_extra_time_wrapper(env: gym.Env, n_time_wrappers_found: int = 0) -> gym.Env:
+    """Recursively traverses the environment wrapper stack and removes any TimeLimit wrappers after the first one."""
+    if not isinstance(env, gym.Wrapper):
+        # Base case: we've reached the innermost environment.
+        return env
+
+    is_time_limit_wrapper = isinstance(env, gym.wrappers.TimeLimit)
+    if is_time_limit_wrapper:
+        n_time_wrappers_found += 1
+
+    if is_time_limit_wrapper and n_time_wrappers_found > 1:
+        # This is an extra TimeLimit wrapper, so we skip it by recursing on its inner environment.
+        # We pass the count along to ensure subsequent nested TimeLimit wrappers are also removed.
+        return remove_extra_time_wrapper(env.env, n_time_wrappers_found)
+    else:
+        # This is not an extra TimeLimit wrapper, so we keep it.
+        # We recurse on the inner environment to process the rest of the stack.
+        env.env = remove_extra_time_wrapper(env.env, n_time_wrappers_found)
+        return env

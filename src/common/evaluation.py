@@ -1,4 +1,5 @@
 from typing import Any, Callable, Optional
+from tqdm import tqdm
 
 import gymnasium as gym
 import numpy as np
@@ -22,7 +23,7 @@ def evaluate_policy(
     all_rewards = []
 
     if check_for_wrapper(env, TCRMDP):
-        env.reset()
+        env.reset(seed=seed)
         env = env.copy_to_stationary_env()
         hidden_state = env.hidden_state
 
@@ -78,6 +79,12 @@ def evaluate_policy_hidden_state(
     all_rewards = []
     is_continual_learner = getattr(model, "is_continual_learner", False)
     continual_args = {}
+    temp_env = env
+    while hasattr(temp_env, "env"):
+        if isinstance(temp_env, gym.wrappers.TimeLimit):
+            max_steps = temp_env._max_episode_steps
+            break
+        temp_env = temp_env.env
 
     for _ in range(iterations):
         episode_rewards = []
@@ -86,13 +93,15 @@ def evaluate_policy_hidden_state(
         if is_continual_learner:
             continual_args["stationary_env"] = env.copy_to_stationary_env()
             continual_args["sample"] = None
+            continual_args["learning"] = True
 
         current_step = 0
+        pbar = tqdm(total=max_steps, desc="Continual Learning Evaluation")
         while not done:
             current_step += 1
             action = model.predict(observation, **continual_args)
             if adversary_policy is not None:
-                hidden_action = adversary_policy.select_action(observation, hidden_state, deterministic=True)
+                hidden_action = adversary_policy.step(hidden_state)
 
             next_observation, next_hidden_state, reward, terminated, truncated, _ = env.step(action, hidden_action)
             episode_rewards.append(reward)
@@ -103,10 +112,10 @@ def evaluate_policy_hidden_state(
                 "action": action,
                 "reward": reward,
                 "done": done,
-                "hidden_state": hidden_state,
-                "next_hidden_state": next_hidden_state,
+                # "hidden_state": hidden_state,
+                # "next_hidden_state": next_hidden_state,
             }
-
+            pbar.update(1)
             if is_continual_learner:
                 continual_args["stationary_env"] = env.copy_to_stationary_env()
                 continual_args["sample"] = sample
@@ -120,6 +129,7 @@ def evaluate_policy_hidden_state(
             if render:
                 env.render()
         all_rewards.append(episode_rewards)
+    pbar.close()
 
     max_len = max(len(ep) for ep in all_rewards) if all_rewards else 0
     padded_rewards = np.nan * np.ones((len(all_rewards), max_len))

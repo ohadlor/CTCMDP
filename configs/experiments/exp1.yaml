@@ -6,4 +6,4 @@ hydra:
   sweeper:
     params:
       schedule: choice(brownian, linear, sinusoidal, static)
-      agent: choice(td3, vanilla_tc_m2td3, stacked_tc_m2td3, oracle_tc_m2td3, continual_td3, pretrainted_continual_td3.td3, pretrainted_continual_td3.tc_m2td3)
+      agent: choice(td3, vanilla_tc_m2td3, stacked_tc_m2td3, oracle_tc_m2td3, continual_td3, pretrained_continual_td3/td3, pretrained_continual_td3/tc_m2td3)

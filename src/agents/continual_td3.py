@@ -17,7 +17,7 @@ ContinualTD3 = make_continual_learner(TD3)
 class DiscountModelContinualTD3(ContinualTD3):
     def __init__(
         self,
-        p_real: float = 1.0,
+        p_real: float = 0.5,
         sim_gamma: float = 0.99,
         sim_horizon: int = 1,
         sim_action_noise_std: float = 0.1,
@@ -39,7 +39,7 @@ class DiscountModelContinualTD3(ContinualTD3):
         self._setup_sim(sim_gamma, sim_horizon, sim_action_noise_std, sim_buffer_size)
 
     def train(self, gradient_steps: int = 1, batch_size: int = 100) -> None:
-        if self.stationary_env is not None:
+        if self.stationary_env is not None and hasattr(self, "sim_replay_buffer"):
             self._add_to_sim_buffer()
 
         self.policy.set_training_mode(True)
@@ -93,21 +93,22 @@ class DiscountModelContinualTD3(ContinualTD3):
 
     def _add_to_sim_buffer(self) -> None:
         self.sim_replay_buffer.increment_time_indices()
-        obs, _ = self.stationary_env.reset(seed=self.seed)
+        # obs, _ = self.stationy_env.reset(seed=self.seed)
+        obs = self.last_obs
 
         for _ in range(self.sim_horizon):
             action = self.predict(obs)
             scaled_action = self.policy.scale_action(action)
 
             if self.sim_action_noise is not None:
-                noise = self.sim_action_noise()
+                noise = self.sim_action_noise(scaled_action.size)
                 scaled_action = np.clip(scaled_action + noise, -1, 1)
                 action = self.policy.unscale_action(scaled_action)
 
             next_obs, reward, terminated, truncated, info = self.stationary_env.step(action)
             done = terminated or truncated
 
-            self.sim_replay_buffer.add(obs, next_obs, scaled_action, np.array([reward]), np.array([done]), [info])
+            self.sim_replay_buffer.add(obs, next_obs, scaled_action, reward, done)
 
             obs = next_obs
             if done:

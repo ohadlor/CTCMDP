@@ -33,7 +33,12 @@ def seed_sequence_resolver(n: int, entropy: int) -> str:
     return ",".join(map(str, seeds))
 
 
-OmegaConf.register_new_resolver("seed_sequence", seed_sequence_resolver)
-OmegaConf.register_new_resolver("int_product", int_product_resolver)
-OmegaConf.register_new_resolver("floor_div", floor_div_resolver)
-OmegaConf.register_new_resolver("custom_dir", custom_dir_resolver)
+resolvers = {
+    "seed_sequence": seed_sequence_resolver,
+    "int_product": int_product_resolver,
+    "floor_div": floor_div_resolver,
+    "custom_dir": custom_dir_resolver,
+}
+for resolver_name, resolver in resolvers.items():
+    if not OmegaConf.has_resolver(resolver_name):
+        OmegaConf.register_new_resolver(resolver_name, resolver)

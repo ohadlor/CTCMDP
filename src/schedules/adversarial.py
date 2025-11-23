@@ -4,12 +4,12 @@ import numpy as np
 from numpy.random import Generator
 from gymnasium import spaces
 
-from .hidden_action_selector import HiddenActionSelector
+from .base_schedule import BaseActionSchedule
 
 
 # TODO: clip actions, make into actor-critic agent
-class AdversarialSchedule(HiddenActionSelector):
-    def __init__(self, action_space: spaces.Box, observation_space: spaces.Dict, model_path: str, rng: Generator):
+class AdversarialSchedule(BaseActionSchedule):
+    def __init__(self, action_space: spaces.Box, observation_space: spaces.Box, model_path: str, rng: Generator):
         super().__init__(action_space, observation_space, rng=rng)
         obs_dim = observation_space["observation"].shape[0]
         psi_dim = observation_space["hidden"].shape[0]

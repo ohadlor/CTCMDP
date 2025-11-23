@@ -1,6 +1,6 @@
 defaults:
   - experiments: null
-  - agent: pretrainted_continual_td3.td3
+  - agent: pretrained_continual_td3/td3
   - schedule: brownian
   - override hydra/launcher: submitit_custom
   - _self_
@@ -8,6 +8,8 @@ defaults:
 master_seed: 2671232903
 env:
   max_episode_steps: 1e5
+agent:
+  radius: 0.01
 iterations: 10
 
 num_gpus: 6 # Total physical GPUs available
@@ -18,8 +20,8 @@ hydra:
   mode: MULTIRUN
   sweep:
     dir: outputs/${experiment_name}
-    subdir: ${train_dir:${agent},${env}}
+    subdir: ${custom_dir:${agent},${env}}
   sweeper:
     params:
-      env.name: choice(ant, halfcheetah, hopper, humanoidstandup, walker2d)
-      seed: ${seed_sequence:${iterations},${master_seed}}
+      +env.name: choice(ant, halfcheetah, humanoidstandup, walker2d) # Hopper is not used as the rrls implementation has some parameter issues
+      +seed: ${seed_sequence:${iterations},${master_seed}}

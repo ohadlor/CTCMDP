@@ -40,7 +40,7 @@ class BaseBuffer:
         self.dones = np.zeros((self.buffer_size,), dtype=np.float32)
         self.next_observations = np.zeros((self.buffer_size, *observation_space.shape), dtype=observation_space.dtype)
 
-    def add(self, obs, next_obs, action, reward, done, infos) -> None:
+    def add(self, obs, next_obs, action, reward, done) -> None:
         self.observations[self.pos] = obs
         self.next_observations[self.pos] = next_obs
         self.actions[self.pos] = action
@@ -100,9 +100,9 @@ class TimeIndexedReplayBuffer(BaseBuffer):
         self.time_indices = np.zeros((self.buffer_size,), dtype=np.int32)
         self.gamma = gamma
 
-    def add(self, obs, next_obs, action, reward, done, infos) -> None:
+    def add(self, obs, next_obs, action, reward, done) -> None:
         pos = self.pos
-        super().add(obs, next_obs, action, reward, done, infos)
+        super().add(obs, next_obs, action, reward, done)
         self.time_indices[pos] = 0
 
     def sample(self, batch_size: int):

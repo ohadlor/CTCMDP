@@ -205,5 +205,6 @@ class M2TD3Policy:
             return th.cat([observation, hidden_state, action], dim=1)
 
     def load_actor(self, path: str):
-        self.actor.load_state_dict(th.load(path))
-        self.actor_target.load_state_dict(th.load(path))
+        weights = th.load(path, map_location=self.device, weights_only=True)
+        self.actor.load_state_dict(weights["actor"])
+        self.actor_target.load_state_dict(weights["actor"])

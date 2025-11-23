@@ -328,17 +328,3 @@ class TCM2TD3(BaseAlgorithm):
             },
             path,
         )
-
-    def load(self, path: str):
-        """
-        Load a trained TCM2TD3 model from a file.
-
-        :param path: Path to the saved model.
-        :param env: The environment.
-        :param kwargs: Keyword arguments for TCM2TD3 constructor.
-        :return: A loaded TCM2TD3 model.
-        """
-        models = th.load(path, map_location=self.device)
-        self.policy.actor.load_state_dict(models["actor"])
-        self.policy.adversary.load_state_dict(models["adversary"])
-        self.policy.critic.load_state_dict(models["critic"])

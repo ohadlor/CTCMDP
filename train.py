@@ -43,7 +43,7 @@ def main(cfg: DictConfig):
     agent_name = ""
     if "variant" in cfg.agent:
         agent_name += f"_{cfg.agent.variant}"
-    agent_name += f"_{cfg.agent.model._target_.split('.')[-1]}.pt"
+    agent_name += f"_{cfg.agent.model._target_.split('.')[-1]}.pth"
     agent_name = agent_name[1:]
     save_path += agent_name
     os.makedirs(os.path.dirname(save_path), exist_ok=True)

@@ -7,8 +7,7 @@ from omegaconf import DictConfig
 from src.common.managment import set_torch_gpu
 
 
-# TODO: toggle continuous learning
-@hydra.main(config_path="configs", config_name="main_config", version_base=None)
+@hydra.main(config_path="configs", config_name="test_config", version_base=None)
 def main(cfg: DictConfig):
     hydra_cfg = HydraConfig.get()
     job_id = hydra_cfg.job.get("num", None)
@@ -28,25 +27,26 @@ def main(cfg: DictConfig):
     env = create_env(cfg, output_dir)
 
     agent_params = {"seed": cfg.seed, "env": env, "tensorboard_log": output_dir}
-    if "continual" in cfg.agent.name and cfg.agent.get("bootstrap", None) is not None:
-        agent_params["actor_path"] = os.path.join("pretrained_models", cfg.env.name, cfg.agent.bootstrap)
-        agent_params["critic_path"] = os.path.join("pretrained_models", cfg.env.name, "td3")
+    if "continual" in cfg.agent.model._target_ and cfg.agent.get("bootstrap", None) is not None:
+        agent_params["actor_path"] = os.path.join("pretrained_models", cfg.env.name, cfg.agent.bootstrap + ".pth")
+        agent_params["critic_path"] = os.path.join("pretrained_models", cfg.env.name, "TD3" + ".pth")
     elif cfg.agent.get("bootstrap", None) is not None:
-        bootstrap_path = os.path.join("pretrained_models", cfg.env.name, cfg.agent.bootstrap)
-        agent_params["actor_path"] = bootstrap_path
-
+        agent_params["actor_path"] = os.path.join("pretrained_models", cfg.env.name, cfg.agent.bootstrap + ".pth")
     agent: TD3 = hydra.utils.instantiate(cfg.agent.model, **agent_params, _convert_="all")
 
     hidden_action_schedule: BaseActionSchedule = hydra.utils.instantiate(
-        cfg.schedule, action_space=env.hidden_action_space, state_space=env.state_space, rng=agent.rng
+        cfg.schedule,
+        action_space=env.hidden_action_space,
+        observation_space=env.hidden_observation_space,
+        rng=agent.rng,
     )
 
     setup_string = (
         f"Starting evaluation of {cool_name},"
         + f"\nEnv: {cfg.env.name}\nAgent: {cfg.agent.model._target_.split('.')[-1]}"
     )
-    if cfg.actor.bootstrap_from is not None:
-        setup_string += f", bootstrapped from: {cfg.actor.bootstrap_from}"
+    if cfg.agent.bootstrap is not None:
+        setup_string += f", bootstrapped from: {cfg.agent.bootstrap}"
     print(setup_string)
 
     print("Setup complete. Starting continual learning...")
@@ -59,11 +59,11 @@ def main(cfg: DictConfig):
         seed=cfg.seed,
     )
 
-    print(f"Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
+    print(f"Time average reward: {mean_reward:.2f} +/- {std_reward:.2f}")
 
     # Save evaluation results
     with open(f"{output_dir}/evaluation.txt", "w") as f:
-        f.write(f"Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
+        f.write(f"Time average reward: {mean_reward:.2f} +/- {std_reward:.2f}")
 
 
 if __name__ == "__main__":

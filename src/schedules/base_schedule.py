@@ -19,8 +19,11 @@ class BaseActionSchedule(ABC):
 
     def step(self, obs: np.ndarray) -> np.ndarray:
         action = self._action_selection(obs)
+        action = action.astype(self.observation_space.dtype)
         self.t += 1
-        assert self.observation_space.contains(obs + action)
+        assert self.observation_space.contains(
+            (obs + action).astype(self.observation_space.dtype)
+        ), "New observation not in observation space"
         return action
 
     def clip_to_action_space(self, action: np.ndarray) -> np.ndarray:
@@ -42,3 +45,9 @@ class BaseActionSchedule(ABC):
     def reset(self) -> np.ndarray:
         """Reset internal state if the selector is stateful."""
         self.t = 0
+
+    def scale_action(self, unscaled_action: np.ndarray) -> np.ndarray:
+        return (unscaled_action - self.action_space.low) / (self.action_space.high - self.action_space.low) * 2 - 1
+
+    def unscale_action(self, scaled_action: np.ndarray) -> np.ndarray:
+        return self.action_space.low + (scaled_action + 1) * 0.5 * (self.action_space.high - self.action_space.low)

@@ -26,15 +26,20 @@ class ReflectedBrownianMotionSchedule(BaseActionSchedule):
         """
         Generates a random step and correctly reflects it if it would push psi out of bounds.
         """
-        next_obs = self.rng.normal(loc=obs, scale=self.volatility, size=self.action_space.shape[0])
+        scaled_action = self.rng.normal(loc=0, scale=self.volatility, size=self.action_space.shape[0]).clip(-1, 1)
+        action = self.unscale_action(scaled_action)
+
+        next_obs = obs + action
 
         # Implement reflection for each dimension
-        np.where(next_obs > self.action_space.high, 2 * self.action_space.high - next_obs, next_obs)
-        np.where(next_obs < self.action_space.low, 2 * self.action_space.low - next_obs, next_obs)
+        next_obs = np.where(
+            next_obs > self.observation_space.high, 2 * self.observation_space.high - next_obs, next_obs
+        )
+        next_obs = np.where(next_obs < self.observation_space.low, 2 * self.observation_space.low - next_obs, next_obs)
 
-        action = next_obs - obs
+        effective_action = next_obs - obs
 
-        return self.clip_to_action_space(action)
+        return effective_action
 
 
 class UniformRandomSchedule(BaseActionSchedule):

@@ -14,8 +14,8 @@ hydra:
   mode: MULTIRUN
   sweep:
     dir: outputs/pretrain
-    subdir: ${train_dir:${agent},${env}}
+    subdir: ${custom_dir:${agent},${env}}
   sweeper:
     params:
       pretrain: choice(td3, vanilla_tc_m2td3, stacked_tc_m2td3, oracle_tc_m2td3)
-      env.name: choice(ant, halfcheetah, hopper, humanoidstandup, walker2d)
+      env.name: choice(ant, halfcheetah, humanoidstandup, walker2d) # Hopper is not used as the rrls implementation has some parameter issues

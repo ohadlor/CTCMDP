@@ -1,0 +1,4 @@
+model:
+  _target_: src.agents.tc_m2td3.TCM2TD3
+variant: oracle
+radius: 0.01

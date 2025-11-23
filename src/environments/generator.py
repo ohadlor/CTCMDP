@@ -2,14 +2,14 @@ from omegaconf import DictConfig
 import gymnasium as gym
 from gymnasium.wrappers import FrameStackObservation, TimeAwareObservation, RecordVideo, FlattenObservation
 
-from .env_utils import get_param_bounds, name_to_env_id
+from .env_utils import get_param_bounds, name_to_env_id, remove_extra_time_wrapper
 from .wrappers import TCRMDP, SplitActionObservationSpace
 
 
 def create_env(cfg: DictConfig, run_dir: str) -> gym.Env:
     """Creates the environment, simulator, and hidden policy."""
     # Define gym env
-    is_rrls = hasattr(cfg.env, "radius")
+    is_rrls = hasattr(cfg.agent, "radius")
     env_id = name_to_env_id(cfg.env.name, is_rrls)
     max_episode_steps = cfg.env.get("max_episode_steps", None)
     if cfg.get("record", False):
@@ -21,6 +21,8 @@ def create_env(cfg: DictConfig, run_dir: str) -> gym.Env:
         )
     else:
         env = gym.make(env_id, max_episode_steps=max_episode_steps)
+    # rrls seems to incorporate an extra timelimit wrapper
+    env = remove_extra_time_wrapper(env)
 
     if cfg.env.get("time_aware", False):
         env = TimeAwareObservation(env)
@@ -31,7 +33,7 @@ def create_env(cfg: DictConfig, run_dir: str) -> gym.Env:
         if agent_variant == "stacked":
             env = FlattenObservation(FrameStackObservation(env, stack_size=2))
         param_bounds = get_param_bounds(cfg.env.name)
-        env = TCRMDP(env, param_bounds, cfg.env.radius)
+        env = TCRMDP(env, param_bounds, cfg.agent.radius)
         env = SplitActionObservationSpace(env)
 
     return env

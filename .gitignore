@@ -66,6 +66,9 @@ ipython_config.py
 # pyenv
 .python-version
 
+# Outputs
+outputs/
+pretrained_models/
 
 # Environments
 .env

@@ -85,9 +85,14 @@ class TD3Policy:
         return (action - self.action_space.low) / (self.action_space.high - self.action_space.low) * 2 - 1
 
     def load_critic(self, path: str):
-        self.critic.load_state_dict(th.load(path))
-        self.critic_target.load_state_dict(self.critic.state_dict())
+        weights = th.load(path, map_location=self.device, weights_only=True)
+        self.critic.load_state_dict(weights["critic"])
+        self.critic_target.load_state_dict(weights["critic"])
 
     def load_actor(self, path: str):
-        self.actor.load_state_dict(th.load(path))
-        self.actor_target.load_state_dict(self.actor.state_dict())
+        weights = th.load(path, map_location=self.device, weights_only=True)
+        self.actor.load_state_dict(weights["actor"])
+        self.actor_target.load_state_dict(weights["actor"])
+
+    def save(self, path: str):
+        pass

@@ -1,3 +1,4 @@
 model:
-  _target_: src.agents.continual_td3.ContinualTD3
-bootstrap: vanilla_tc_m2td3
+  _target_: src.agents.continual_td3.DiscountModelContinualTD3
+bootstrap: vanilla_TCM2TD3
+radius: 0.01

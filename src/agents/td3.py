@@ -172,7 +172,7 @@ class TD3(BaseAlgorithm):
         new_obs, reward, terminated, truncated, infos = self.env.step(unscaled_action)
 
         # Add the transition to the replay buffer
-        self.replay_buffer.add(obs, new_obs, scaled_action, reward, terminated, infos)
+        self.replay_buffer.add(obs, new_obs, scaled_action, reward, terminated)
 
         return new_obs, reward, terminated, truncated, infos
 
@@ -255,16 +255,3 @@ class TD3(BaseAlgorithm):
             },
             path,
         )
-
-    def load(self, path: str):
-        """
-        Load a trained TD3 model from a file.
-
-        :param path: Path to the saved model.
-        :param env: The environment.
-        :param kwargs: Keyword arguments for TD3 constructor.
-        :return: A loaded TD3 model.
-        """
-        models = th.load(path, map_location=self.device)
-        self.policy.actor.load_state_dict(models["actor"])
-        self.policy.critic.load_state_dict(models["critic"])
