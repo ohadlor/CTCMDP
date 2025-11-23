@@ -20,6 +20,47 @@ def evaluate_policy(
     average_reward: bool = False,
     seed: Optional[int] = None,
 ) -> np.ndarray:
+    """
+    Evaluates the policy of a model in a given Gymnasium environment.
+
+    This function runs the model's policy for a specified number of episodes
+    and collects the rewards. It can handle both standard gym environments and
+    those wrapped with TCRMDP. For TCRMDP environments, it creates a stationary
+    version of the environment for evaluation.
+
+    Parameters
+    ----------
+    model : object
+        The model to be evaluated. It should have a `predict` method that
+        takes an observation and returns an action.
+    env : gym.Env
+        The Gymnasium environment to evaluate the policy on.
+    n_eval_episodes : int, optional
+        The number of episodes to run for evaluation, by default 10.
+    render : bool, optional
+        Whether to render the environment during evaluation, by default False.
+    callback : Optional[Callable[[dict[str, Any], dict[str, Any]], None]], optional
+        A callback function to be called at each step with locals and globals,
+        by default None.
+    return_episode_rewards : bool, optional
+        If True, returns the rewards for each episode, by default False. The rewards
+        are padded with NaNs to ensure a consistent shape.
+    average_reward : bool, optional
+        If True, returns the mean and standard deviation of the average reward
+        per episode, by default False.
+    seed : Optional[int], optional
+        The seed for the environment's random number generator, by default None.
+
+    Returns
+    -------
+    np.ndarray or tuple[float, float]
+        If `return_episode_rewards` is True, returns a 2D numpy array of shape
+        (n_eval_episodes, max_episode_length) with rewards for each step.
+        If `average_reward` is True, returns the mean and standard deviation of
+        the average rewards per episode.
+        Otherwise, returns the mean and standard deviation of the total reward
+        per episode.
+    """
     all_rewards = []
 
     if check_for_wrapper(env, TCRMDP):
@@ -70,12 +111,47 @@ def evaluate_policy_hidden_state(
     env: gym.Env,
     model: BaseAlgorithm,
     adversary_policy: Optional[BaseActionSchedule] = None,
-    iterations: int = 10,
     render: bool = False,
     callback: Optional[Callable[[dict[str, Any], dict[str, Any]], None]] = None,
     return_episode_rewards: bool = False,
-    seed: Optional[int] = None,
+    seeds: Optional[list[int]] = [],
 ):
+    """
+    Evaluates a model's policy in a continual learning setup with a hidden state.
+
+    This function is designed for environments where the agent's performance is
+    evaluated over a series of iterations (episodes), each with a potentially
+    different underlying system dynamic controlled by a hidden state. It supports
+    continual learners and can incorporate an adversary policy that influences
+    the hidden state.
+
+    Parameters
+    ----------
+    env : gym.Env
+        The Gymnasium environment, which should expose hidden states.
+    model : BaseAlgorithm
+        The algorithm to evaluate. It should be a subclass of `BaseAlgorithm`.
+    adversary_policy : Optional[BaseActionSchedule], optional
+        An optional policy for the adversary that acts on the hidden state,
+        by default None.
+    render : bool, optional
+        Whether to render the environment, by default False.
+    callback : Optional[Callable[[dict[str, Any], dict[str, Any]], None]], optional
+        A callback function to be called at each step, by default None.
+    return_episode_rewards : bool, optional
+        If True, returns rewards for each episode, by default False. The rewards
+        are padded with NaNs to ensure a consistent shape.
+    seeds : Optional[list[int]], optional
+        A list of seeds for each evaluation iteration to ensure reproducibility,
+        by default [].
+
+    Returns
+    -------
+    np.ndarray or tuple[float, float]
+        If `return_episode_rewards` is True, returns a 2D numpy array of rewards.
+        Otherwise, returns the mean and standard deviation of the average reward
+        across all episodes.
+    """
     all_rewards = []
     is_continual_learner = getattr(model, "is_continual_learner", False)
     continual_args = {}
@@ -85,23 +161,31 @@ def evaluate_policy_hidden_state(
             max_steps = temp_env._max_episode_steps
             break
         temp_env = temp_env.env
-
-    for _ in range(iterations):
+    tensorboard_log = model.tensorboard_log
+    for i, seed in tqdm(enumerate(seeds), total=len(seeds), desc="Iteration Loop"):
+        model.set_seed(seed)
+        adversary_policy.set_seed(seed)
+        model.tensorboard_log = tensorboard_log + f"/iter{i}"
         episode_rewards = []
         done = False
         observation, hidden_state, _ = env.reset(seed=seed)
+        if adversary_policy is not None:
+            adversary_policy.reset(start_state=hidden_state)
         if is_continual_learner:
             continual_args["stationary_env"] = env.copy_to_stationary_env()
             continual_args["sample"] = None
-            continual_args["learning"] = True
 
         current_step = 0
-        pbar = tqdm(total=max_steps, desc="Continual Learning Evaluation")
+        pbar = tqdm(total=max_steps, desc="Continual Learning Evaluation", leave=False)
         while not done:
             current_step += 1
+            if getattr(model, "oracle_actor", False):
+                observation = np.concatenate([observation, hidden_state])
             action = model.predict(observation, **continual_args)
             if adversary_policy is not None:
                 hidden_action = adversary_policy.step(hidden_state)
+            else:
+                hidden_action = np.zeros_like(hidden_state)
 
             next_observation, next_hidden_state, reward, terminated, truncated, _ = env.step(action, hidden_action)
             episode_rewards.append(reward)
@@ -112,8 +196,6 @@ def evaluate_policy_hidden_state(
                 "action": action,
                 "reward": reward,
                 "done": done,
-                # "hidden_state": hidden_state,
-                # "next_hidden_state": next_hidden_state,
             }
             pbar.update(1)
             if is_continual_learner:

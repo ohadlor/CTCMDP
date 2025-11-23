@@ -18,6 +18,24 @@ class TCM2TD3(BaseAlgorithm):
     """
     Time-Constrain Min-Max Twin-Delayed Deep Deterministic Policy Gradient (TC-M2TD3).
     Algorithmically equivalent to M2TD3, time constraint comes from environment restriction on hidden action space.
+
+    :param env: The environment to learn from.
+    :param lr: The learning rate for the optimizers.
+    :param buffer_size: The size of the replay buffer.
+    :param learning_starts: The number of steps before learning starts.
+    :param batch_size: The size of the batches for training.
+    :param gamma: The discount factor.
+    :param tau: The soft update coefficient.
+    :param gradient_steps: The number of gradient steps to take after each rollout.
+    :param action_noise_std: The standard deviation of the action noise.
+    :param policy_delay: The number of steps to wait before updating the policy.
+    :param target_policy_noise: The standard deviation of the target policy noise.
+    :param target_noise_clip: The clip value for the target policy noise.
+    :param oracle_actor: Whether to use an oracle actor.
+    :param policy_path: The path to a pretrained policy.
+    :param device: The device to use for training.
+    :param tensorboard_log: The path to the tensorboard log directory.
+    :param seed: The seed for the random number generator.
     """
 
     def __init__(
@@ -40,8 +58,7 @@ class TCM2TD3(BaseAlgorithm):
         tensorboard_log: str = "runs",
         seed: Optional[int] = None,
     ):
-        # Action and state spaces are dicts that are split into hidden and observed for the policy.
-        # For the env they are given and recieved as dicts
+        # Action and state spaces are split into hidden and not hidden
         self.hidden_observation_space = env.hidden_observation_space
         self.hidden_action_space = env.hidden_action_space
 
@@ -66,11 +83,11 @@ class TCM2TD3(BaseAlgorithm):
         self.action_noise = NormalActionNoise(mean=0, std=action_noise_std, rng=self.rng)
         self.learning_starts = learning_starts
 
-        if policy_path is not None:
-            self.load(policy_path)
-
         self._setup_model()
         self._make_aliases()
+
+        if policy_path is not None:
+            self.policy.load_actor(policy_path)
 
         self._n_updates = 0
 
@@ -96,7 +113,14 @@ class TCM2TD3(BaseAlgorithm):
         self.adversary_optimizer = self.policy.adversary_optimizer
         self.critic_optimizer = self.policy.critic_optimizer
 
-    def train(self, gradient_steps: int, batch_size: int) -> None:
+    def train(self, gradient_steps: int, batch_size: int) -> tuple[float, Optional[float], Optional[float]]:
+        """
+        Train the agent for a given number of gradient steps.
+
+        :param gradient_steps: The number of gradient steps to perform.
+        :param batch_size: The batch size to use for training.
+        :return: A tuple containing the mean critic loss, the mean actor loss, and the mean adversary loss.
+        """
         self.policy.set_training_mode(True)
         actor_losses, critic_losses, adversary_losses = [], [], []
         for _ in range(gradient_steps):
@@ -167,18 +191,17 @@ class TCM2TD3(BaseAlgorithm):
 
         return safe_mean(critic_losses), safe_mean(actor_losses), safe_mean(adversary_losses)
 
-    def sample_action(self, actor_obs: np.ndarray, num_timesteps: int) -> tuple[np.ndarray, np.ndarray]:
+    def sample_action(self, actor_obs: np.ndarray, num_timestep: int) -> tuple[np.ndarray, np.ndarray]:
         """
         Sample an action from the policy, add noise, and scale it.
-        :param obs: Observation from the environment
-        :param num_timesteps: The current timestep
+        :param actor_obs: Observation from the environment for the actor.
+        :param num_timestep: The current timestep.
         :return: A tuple containing:
             - The unscaled action to be used in the environment.
             - The scaled action (between -1 and 1) to be stored in the buffer.
         """
-        # Get scaled action from the actor network
-        if num_timesteps < self.learning_starts:
-            # Sample a random action from a uniform distribution between -1 and 1
+
+        if num_timestep < self.learning_starts:
             unscaled_action = self.action_space.sample()
         else:
             unscaled_action = self.predict(actor_obs)
@@ -196,18 +219,15 @@ class TCM2TD3(BaseAlgorithm):
 
         return action, buffer_action
 
-    def sample_hidden_space(self, adversary_obs: np.ndarray, num_timesteps: int) -> np.ndarray:
+    def sample_hidden_space(self, adversary_obs: np.ndarray, num_timestep: int) -> np.ndarray:
         """
-        Sample an action from the policy, add noise, and scale it.
-        :param obs: Observation from the environment
-        :param num_timesteps: The current timestep
-        :return: A tuple containing:
-            - The unscaled action to be used in the environment.
-            - The scaled action (between -1 and 1) to be stored in the buffer.
+        Sample a hidden action from the policy, add noise, and scale it.
+        :param adversary_obs: Observation from the environment for the adversary.
+        :param num_timestep: The current timestep.
+        :return: The unscaled hidden action to be used in the environment.
         """
-        # Get scaled action from the actor network
-        if num_timesteps < self.learning_starts:
-            # Sample a random action from a uniform distribution between -1 and 1
+
+        if num_timestep < self.learning_starts:
             unscaled_hidden_action = self.hidden_action_space.sample()
         else:
             unscaled_hidden_action = self.policy.predict_hidden_action(adversary_obs)
@@ -222,33 +242,27 @@ class TCM2TD3(BaseAlgorithm):
         return hidden_action
 
     def predict(self, obs: np.ndarray) -> np.ndarray:
-        """
-        Get the action from the policy.
-        :param obs: Observation from the environment.
-        :return: The action.
-        """
         return self.policy.predict(obs)
 
     def collect_rollouts(
-        self, obs: np.ndarray, hidden_state: np.ndarray, num_timesteps: int
+        self, obs: np.ndarray, hidden_state: np.ndarray, num_timestep: int
     ) -> tuple[np.ndarray, np.ndarray, float, bool, bool, dict]:
         """
         Collect a single step from the environment and add it to the replay buffer.
 
         :param obs: The current observation.
-        :param num_timesteps: The total number of timesteps collected so far.
-        :return: A tuple containing the new observation, the reward, terminated, truncated, and infos.
+        :param hidden_state: The current hidden state.
+        :param num_timestep: The current time step.
+        :return: A tuple containing the new obs, the new hidden state, the reward, terminated, truncated, and infos.
         """
         agent_obs = self.policy.concat_obs_actor(obs, hidden_state)
-        unscaled_action, scaled_action = self.sample_action(agent_obs, num_timesteps)
+        unscaled_action, scaled_action = self.sample_action(agent_obs, num_timestep)
 
         adversary_obs = self.policy.concat_obs_adversary(obs, hidden_state, scaled_action)
-        hidden_action = self.sample_hidden_space(adversary_obs, num_timesteps)
+        hidden_action = self.sample_hidden_space(adversary_obs, num_timestep)
 
-        # Step the environment
         new_obs, new_hidden_state, reward, terminated, truncated, infos = self.env.step(unscaled_action, hidden_action)
 
-        # Add the transition to the replay buffer
         self.replay_buffer.add(obs, new_obs, scaled_action, reward, terminated, infos, hidden_state, new_hidden_state)
 
         return new_obs, new_hidden_state, reward, terminated, truncated, infos
@@ -256,18 +270,24 @@ class TCM2TD3(BaseAlgorithm):
     def learn(
         self,
         total_timesteps: int,
-        log_interval: int = 4,
-        tb_log_name: str = "TD3",
+        log_interval: int = 1,
         reset_num_timesteps: bool = True,
         progress_bar: bool = False,
     ):
+        """
+        Train the agent for a given number of timesteps.
+
+        :param total_timesteps: The total number of timesteps to train for.
+        :param log_interval: The number of timesteps between each log.
+        :param reset_num_timesteps: Whether to reset the number of timesteps.
+        :param progress_bar: Whether to show a progress bar.
+        """
         if self.tensorboard_log is not None and self.logger is None:
             from torch.utils.tensorboard import SummaryWriter
 
             self.logger = SummaryWriter(log_dir=self.tensorboard_log)
         num_timesteps = 0
 
-        # Reset the environment
         obs, hidden_state, _ = self.env.reset(seed=self.seed)
 
         if progress_bar:

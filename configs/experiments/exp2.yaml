@@ -1,10 +1,9 @@
 # @package _global_
-# Randomize initial hidden state, static schedule, (maybe use rrls built in method)
+# Sweep over radius and sim discount factor
 
-experiment_name: stationary
-schedule: static
-
+experiment_name: discount_radius
 hydra:
   sweeper:
     params:
-      agent: choice(td3, vanilla_tc_m2td3, stacked_tc_m2td3, oracle_tc_m2td3, continual_td3, pretrained_continual_td3/td3, pretrained_continual_td3/tc_m2td3)
+      agent.radius: ${logspace:0.0001,0.5,20}
+      +agent.sim_discount_factor: ${linspace:0,1,20}

@@ -6,7 +6,7 @@ import numpy as np
 
 class BaseActionNoise(ABC):
     """
-    The base for action noise
+    The base for action noise.
     """
 
     def __init__(self):
@@ -14,12 +14,20 @@ class BaseActionNoise(ABC):
 
     @abstractmethod
     def __call__(self) -> np.ndarray:
+        """
+        Generate a noise sample.
+        """
         raise NotImplementedError
 
 
 class NormalActionNoise(BaseActionNoise):
     """
-    A Gaussian action noise
+    A Gaussian action noise.
+
+    :param mean: The mean of the noise.
+    :param std: The standard deviation of the noise.
+    :param dim: The dimension of the noise.
+    :param rng: The random number generator.
     """
 
     def __init__(
@@ -36,17 +44,32 @@ class NormalActionNoise(BaseActionNoise):
         self.rng = rng if rng is not None else np.random.default_rng()
 
     def __call__(self, dim: Optional[int] = None) -> np.ndarray:
+        """
+        Generate a noise sample.
+
+        :param dim: The dimension of the noise. If None, the dimension specified in the constructor is used.
+        :return: The noise sample.
+        """
         dim = self.dim if dim is None else dim
         return self.rng.normal(self.mean, self.std, size=dim).astype(np.float32)
 
     def reset(self) -> None:
         """
-        Call end of episode reset for the noise
+        Reset the noise.
         """
         pass
 
 
 class OrnsteinUhlenbeckActionNoise(BaseActionNoise):
+    """
+    An Ornstein-Uhlenbeck action noise.
+
+    :param mean: The mean of the noise.
+    :param sigma: The standard deviation of the noise.
+    :param theta: The rate of mean reversion.
+    :param dt: The timestep.
+    :param rng: The random number generator.
+    """
     def __init__(
         self,
         mean: np.ndarray,
@@ -66,6 +89,9 @@ class OrnsteinUhlenbeckActionNoise(BaseActionNoise):
         super().__init__()
 
     def __call__(self) -> np.ndarray:
+        """
+        Generate a noise sample.
+        """
         noise = (
             self.noise_prev
             + self._theta * (self._mu - self.noise_prev) * self._dt
@@ -76,6 +102,6 @@ class OrnsteinUhlenbeckActionNoise(BaseActionNoise):
 
     def reset(self) -> None:
         """
-        reset the Ornstein Uhlenbeck noise, to the initial position
+        Reset the noise to the initial position.
         """
         self.noise_prev = np.zeros_like(self._mu)

@@ -9,6 +9,20 @@ from .base_schedule import BaseActionSchedule
 
 # TODO: clip actions, make into actor-critic agent
 class AdversarialSchedule(BaseActionSchedule):
+    """
+    An adversarial schedule for the hidden action space.
+
+    Parameters
+    ----------
+    action_space : spaces.Box
+        The action space of the adversary.
+    observation_space : spaces.Box
+        The observation space of the adversary.
+    model_path : str
+        The path to the model to load.
+    rng : Generator
+        The random number generator.
+    """
     def __init__(self, action_space: spaces.Box, observation_space: spaces.Box, model_path: str, rng: Generator):
         super().__init__(action_space, observation_space, rng=rng)
         obs_dim = observation_space["observation"].shape[0]
@@ -29,13 +43,39 @@ class AdversarialSchedule(BaseActionSchedule):
 
     @property
     def l2_radius(self):
+        """
+        The L2 radius of the action space.
+        """
         return self.action_space.high[0]
 
     def _action_selection(self, obs: spaces.Dict) -> np.ndarray:
+        """
+        Select an action based on the observation.
+
+        Parameters
+        ----------
+        obs : spaces.Dict
+            The observation from the environment.
+
+        Returns
+        -------
+        np.ndarray
+            The selected action.
+        """
         with torch.no_grad():
             state_input = torch.FloatTensor(np.concatenate([obs])).unsqueeze(0)
             action = self.policy(state_input).squeeze(0).numpy() * self.l2_radius
         return action
 
     def update(self, agent_critic, replay_buffer):
+        """
+        Update the policy.
+
+        Parameters
+        ----------
+        agent_critic : nn.Module
+            The critic of the agent.
+        replay_buffer : ReplayBuffer
+            The replay buffer of the agent.
+        """
         print("Placeholder: Updating adversarial schedule...")

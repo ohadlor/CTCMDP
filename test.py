@@ -7,8 +7,16 @@ from omegaconf import DictConfig
 from src.common.managment import set_torch_gpu
 
 
-@hydra.main(config_path="configs", config_name="test_config", version_base=None)
+@hydra.main(config_path="configs", config_name="local_config", version_base=None)
 def main(cfg: DictConfig):
+    """
+    Main function for testing the agent.
+
+    Parameters
+    ----------
+    cfg : DictConfig
+        The configuration object.
+    """
     hydra_cfg = HydraConfig.get()
     job_id = hydra_cfg.job.get("num", None)
     if job_id is not None:
@@ -26,19 +34,18 @@ def main(cfg: DictConfig):
 
     env = create_env(cfg, output_dir)
 
-    agent_params = {"seed": cfg.seed, "env": env, "tensorboard_log": output_dir}
+    agent_params = {"env": env, "tensorboard_log": output_dir}
     if "continual" in cfg.agent.model._target_ and cfg.agent.get("bootstrap", None) is not None:
         agent_params["actor_path"] = os.path.join("pretrained_models", cfg.env.name, cfg.agent.bootstrap + ".pth")
         agent_params["critic_path"] = os.path.join("pretrained_models", cfg.env.name, "TD3" + ".pth")
     elif cfg.agent.get("bootstrap", None) is not None:
-        agent_params["actor_path"] = os.path.join("pretrained_models", cfg.env.name, cfg.agent.bootstrap + ".pth")
+        agent_params["policy_path"] = os.path.join("pretrained_models", cfg.env.name, cfg.agent.bootstrap + ".pth")
     agent: TD3 = hydra.utils.instantiate(cfg.agent.model, **agent_params, _convert_="all")
 
     hidden_action_schedule: BaseActionSchedule = hydra.utils.instantiate(
         cfg.schedule,
         action_space=env.hidden_action_space,
         observation_space=env.hidden_observation_space,
-        rng=agent.rng,
     )
 
     setup_string = (
@@ -55,15 +62,14 @@ def main(cfg: DictConfig):
         model=agent,
         env=env,
         adversary_policy=hidden_action_schedule,
-        iterations=cfg.iterations,
-        seed=cfg.seed,
+        seeds=cfg.seeds,
     )
 
     print(f"Time average reward: {mean_reward:.2f} +/- {std_reward:.2f}")
 
     # Save evaluation results
     with open(f"{output_dir}/evaluation.txt", "w") as f:
-        f.write(f"Time average reward: {mean_reward:.2f} +/- {std_reward:.2f}")
+        f.write(f"Time average reward: {mean_reward:.5f} +/- {std_reward:.5f}")
 
 
 if __name__ == "__main__":

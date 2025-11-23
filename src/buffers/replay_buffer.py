@@ -6,6 +6,16 @@ from gymnasium import spaces
 
 
 class BaseReplayBufferSamples(NamedTuple):
+    """
+    A sample of transitions from the replay buffer.
+
+    :param observations: The observations.
+    :param actions: The actions.
+    :param next_observations: The next observations.
+    :param dones: The dones.
+    :param rewards: The rewards.
+    """
+
     observations: th.Tensor
     actions: th.Tensor
     next_observations: th.Tensor
@@ -16,6 +26,12 @@ class BaseReplayBufferSamples(NamedTuple):
 class BaseBuffer:
     """
     Base class for replay buffers.
+
+    :param buffer_size: The size of the replay buffer.
+    :param observation_space: The observation space of the environment.
+    :param action_space: The action space of the environment.
+    :param device: The device to use for training.
+    :param rng: The random number generator.
     """
 
     def __init__(
@@ -40,7 +56,14 @@ class BaseBuffer:
         self.dones = np.zeros((self.buffer_size,), dtype=np.float32)
         self.next_observations = np.zeros((self.buffer_size, *observation_space.shape), dtype=observation_space.dtype)
 
-    def add(self, obs, next_obs, action, reward, done) -> None:
+    def add(
+        self,
+        obs: np.ndarray,
+        next_obs: np.ndarray,
+        action: np.ndarray,
+        reward: float,
+        done: bool,
+    ) -> None:
         self.observations[self.pos] = obs
         self.next_observations[self.pos] = next_obs
         self.actions[self.pos] = action
@@ -52,12 +75,24 @@ class BaseBuffer:
             self.full = True
             self.pos = 0
 
-    def sample(self, batch_size: int):
+    def sample(self, batch_size: int) -> BaseReplayBufferSamples:
+        """
+        Sample a batch of transitions from the replay buffer.
+
+        :param batch_size: The size of the batch to sample.
+        :return: A batch of samples.
+        """
         upper_bound = self.buffer_size if self.full else self.pos
         batch_inds = self.rng.integers(0, upper_bound, size=batch_size)
         return self._get_samples(batch_inds)
 
-    def _get_samples(self, batch_inds: np.ndarray):
+    def _get_samples(self, batch_inds: np.ndarray) -> BaseReplayBufferSamples:
+        """
+        Get a batch of samples from the replay buffer.
+
+        :param batch_inds: The indices of the samples to get.
+        :return: A batch of samples.
+        """
         obs = self.observations[batch_inds]
         next_obs = self.next_observations[batch_inds]
         actions = self.actions[batch_inds]
@@ -73,15 +108,32 @@ class BaseBuffer:
         )
 
     def log(self, logger, step):
+        """
+        Log the buffer size.
+
+        :param logger: The logger to use.
+        :param step: The current step.
+        """
         logger.add_scalar("buffer/size", self.size(), step)
 
-    def size(self):
+    @property
+    def size(self) -> int:
+        """
+        Get the current size of the replay buffer.
+        """
         return self.buffer_size if self.full else self.pos
 
 
 class TimeIndexedReplayBuffer(BaseBuffer):
     """
     A replay buffer that adds a time index to each sample.
+
+    :param buffer_size: The size of the replay buffer.
+    :param observation_space: The observation space of the environment.
+    :param action_space: The action space of the environment.
+    :param gamma: The discount factor for the time indices.
+    :param device: The device to use for training.
+    :param rng: The random number generator.
     """
 
     def __init__(
@@ -101,13 +153,31 @@ class TimeIndexedReplayBuffer(BaseBuffer):
         self.gamma = gamma
 
     def add(self, obs, next_obs, action, reward, done) -> None:
+        """
+        Add a transition to the replay buffer.
+
+        :param obs: The observation.
+        :param next_obs: The next observation.
+        :param action: The action.
+        :param reward: The reward.
+        :param done: The done flag.
+        """
         pos = self.pos
         super().add(obs, next_obs, action, reward, done)
         self.time_indices[pos] = 0
 
-    def sample(self, batch_size: int):
+    def sample(self, batch_size: int) -> BaseReplayBufferSamples:
+        """
+        Sample a batch of transitions from the replay buffer.
+        Samples are weighted by the time index and discount factor,
+        more recent samples have greater weight.
+
+        :param batch_size: The size of the batch to sample.
+        :return: A batch of samples.
+        """
         upper_bound = self.buffer_size if self.full else self.pos
-        weights = self.gamma ** self.time_indices[:upper_bound]
+        time_factor = self.time_indices.max() - self.time_indices[:upper_bound]
+        weights = self.gamma**time_factor
         weights /= weights.sum()
         batch_inds = self.rng.choice(upper_bound, size=batch_size, p=weights.flatten())
         return self._get_samples(batch_inds)

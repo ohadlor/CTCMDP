@@ -9,6 +9,37 @@ from src.networks import Actor, Critic
 
 
 class M2TD3Policy:
+    """
+    Policy for the Min-Max Twin-Delayed Deep Deterministic Policy Gradient (M2TD3) algorithm.
+
+    Parameters
+    ----------
+    observation_space : spaces.Box
+        The observation space of the environment.
+    action_space : spaces.Box
+        The action space of the environment.
+    hidden_state_space : spaces.Box
+        The hidden state space of the environment.
+    hidden_action_space : spaces.Box
+        The hidden action space of the environment.
+    lr : int
+        The learning rate for the optimizers.
+    net_arch : list[int], optional
+        The architecture of the networks, by default [400, 300].
+    activation_fn : nn.Module, optional
+        The activation function to use, by default nn.ReLU.
+    n_critics : int, optional
+        The number of critics to use, by default 2.
+    oracle_actor : bool, optional
+        Whether to use an oracle actor, by default False.
+    device : str, optional
+        The device to use for training, by default "auto".
+    optimizer_class : th.optim.Optimizer, optional
+        The optimizer class to use, by default th.optim.Adam.
+    optimizer_kwargs : dict, optional
+        Keyword arguments for the optimizer, by default None.
+    """
+
     def __init__(
         self,
         observation_space: spaces.Box,
@@ -121,6 +152,19 @@ class M2TD3Policy:
         return self.unscale_action(action)
 
     def predict_hidden_action(self, obs: np.ndarray) -> np.ndarray:
+        """
+        Predict a hidden action given an observation.
+
+        Parameters
+        ----------
+        obs : np.ndarray
+            The observation.
+
+        Returns
+        -------
+        np.ndarray
+            The predicted hidden action.
+        """
         self.set_training_mode(False)
         with th.no_grad():
             obs = th.as_tensor(obs, device=self.device).float()
@@ -130,6 +174,21 @@ class M2TD3Policy:
     def predict_hidden_state(
         self, scaled_hidden_action: Union[th.Tensor, np.ndarray], hidden_state: Union[th.Tensor, np.ndarray]
     ) -> Union[th.Tensor, np.ndarray]:
+        """
+        Predict the next hidden state given a scaled hidden action and the current hidden state.
+
+        Parameters
+        ----------
+        scaled_hidden_action : Union[th.Tensor, np.ndarray]
+            The scaled hidden action.
+        hidden_state : Union[th.Tensor, np.ndarray]
+            The current hidden state.
+
+        Returns
+        -------
+        Union[th.Tensor, np.ndarray]
+            The predicted next hidden state.
+        """
         unscaled_hidden_action = self.unscale_hidden_action(scaled_hidden_action)
         hidden_state = hidden_state + unscaled_hidden_action
         if isinstance(hidden_state, th.Tensor):
@@ -138,6 +197,19 @@ class M2TD3Policy:
             return np.clip(hidden_state, self.hidden_state_space.low, self.hidden_state_space.high)
 
     def unscale_action(self, squashed_action: Union[np.ndarray, th.Tensor]) -> Union[np.ndarray, th.Tensor]:
+        """
+        Unscale an action from [-1, 1] to the original action space.
+
+        Parameters
+        ----------
+        squashed_action : Union[np.ndarray, th.Tensor]
+            The action to unscale.
+
+        Returns
+        -------
+        Union[np.ndarray, th.Tensor]
+            The unscaled action.
+        """
         if isinstance(squashed_action, th.Tensor):
             device = squashed_action.device
             action_space_low_th = th.from_numpy(self.action_space.low).to(device)
@@ -146,6 +218,19 @@ class M2TD3Policy:
         return self.action_space.low + (squashed_action + 1) * 0.5 * (self.action_space.high - self.action_space.low)
 
     def scale_action(self, action: np.ndarray) -> np.ndarray:
+        """
+        Scale an action to [-1, 1].
+
+        Parameters
+        ----------
+        action : np.ndarray
+            The action to scale.
+
+        Returns
+        -------
+        np.ndarray
+            The scaled action.
+        """
         if np.array_equal(self.action_space.high, self.action_space.low):
             return np.zeros_like(action)
         return (action - self.action_space.low) / (self.action_space.high - self.action_space.low) * 2 - 1
@@ -153,6 +238,19 @@ class M2TD3Policy:
     def unscale_hidden_action(
         self, squashed_hidden_action: Union[np.ndarray, th.Tensor]
     ) -> Union[np.ndarray, th.Tensor]:
+        """
+        Unscale a hidden action from [-1, 1] to the original hidden action space.
+
+        Parameters
+        ----------
+        squashed_hidden_action : Union[np.ndarray, th.Tensor]
+            The hidden action to unscale.
+
+        Returns
+        -------
+        Union[np.ndarray, th.Tensor]
+            The unscaled hidden action.
+        """
         if isinstance(squashed_hidden_action, th.Tensor):
             device = squashed_hidden_action.device
             hidden_action_space_low_th = th.from_numpy(self.hidden_action_space.low).to(device)
@@ -165,6 +263,19 @@ class M2TD3Policy:
         )
 
     def scale_hidden_action(self, hidden_action: np.ndarray) -> np.ndarray:
+        """
+        Scale a hidden action to [-1, 1].
+
+        Parameters
+        ----------
+        hidden_action : np.ndarray
+            The hidden action to scale.
+
+        Returns
+        -------
+        np.ndarray
+            The scaled hidden action.
+        """
         if np.array_equal(self.hidden_action_space.high, self.hidden_action_space.low):
             return np.zeros_like(hidden_action)
         return (hidden_action - self.hidden_action_space.low) / (
@@ -174,6 +285,21 @@ class M2TD3Policy:
     def concat_obs_actor(
         self, observation: Union[th.Tensor, np.ndarray], hidden_state: Optional[Union[th.Tensor, np.ndarray]] = None
     ) -> Union[th.Tensor, np.ndarray]:
+        """
+        Concatenate the observation and hidden state for the actor if the actor is an oracle.
+
+        Parameters
+        ----------
+        observation : Union[th.Tensor, np.ndarray]
+            The observation.
+        hidden_state : Optional[Union[th.Tensor, np.ndarray]], optional
+            The hidden state, by default None.
+
+        Returns
+        -------
+        Union[th.Tensor, np.ndarray]
+            The concatenated observation.
+        """
         if self.oracle_actor:
             assert hidden_state is not None and type(observation) is type(hidden_state)
             if isinstance(observation, np.ndarray):
@@ -186,6 +312,21 @@ class M2TD3Policy:
     def concat_obs_critic(
         self, observation: Union[th.Tensor, np.ndarray], hidden_state: Union[th.Tensor, np.ndarray]
     ) -> Union[th.Tensor, np.ndarray]:
+        """
+        Concatenate the observation and hidden state for the critic.
+
+        Parameters
+        ----------
+        observation : Union[th.Tensor, np.ndarray]
+            The observation.
+        hidden_state : Union[th.Tensor, np.ndarray]
+            The hidden state.
+
+        Returns
+        -------
+        Union[th.Tensor, np.ndarray]
+            The concatenated observation.
+        """
         assert type(observation) is type(hidden_state)
         if isinstance(observation, np.ndarray):
             return np.concatenate([observation, hidden_state], axis=-1)
@@ -198,6 +339,23 @@ class M2TD3Policy:
         hidden_state: Union[th.Tensor, np.ndarray],
         action: Union[th.Tensor, np.ndarray],
     ) -> Union[th.Tensor, np.ndarray]:
+        """
+        Concatenate the observation, hidden state, and action for the adversary.
+
+        Parameters
+        ----------
+        observation : Union[th.Tensor, np.ndarray]
+            The observation.
+        hidden_state : Union[th.Tensor, np.ndarray]
+            The hidden state.
+        action : Union[th.Tensor, np.ndarray]
+            The action.
+
+        Returns
+        -------
+        Union[th.Tensor, np.ndarray]
+            The concatenated observation.
+        """
         assert type(observation) is type(hidden_state) and type(observation) is type(action)
         if isinstance(observation, np.ndarray):
             return np.concatenate([observation, hidden_state, action], axis=-1)

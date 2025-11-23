@@ -8,6 +8,18 @@ from .replay_buffer import BaseBuffer
 
 
 class HiddenReplayBufferSamples(NamedTuple):
+    """
+    A sample of transitions from the replay buffer.
+
+    :param observations: The observations.
+    :param actions: The actions.
+    :param next_observations: The next observations.
+    :param dones: The dones.
+    :param rewards: The rewards.
+    :param hidden_states: The hidden states.
+    :param next_hidden_states: The next hidden states.
+    """
+
     observations: th.Tensor
     actions: th.Tensor
     next_observations: th.Tensor
@@ -20,6 +32,13 @@ class HiddenReplayBufferSamples(NamedTuple):
 class HiddenReplayBuffer(BaseBuffer):
     """
     A replay buffer that adds hidden_state and next_hidden_state to the samples.
+
+    :param buffer_size: The size of the replay buffer.
+    :param observation_space: The observation space of the environment.
+    :param action_space: The action space of the environment.
+    :param hidden_state_space: The hidden state space of the environment.
+    :param device: The device to use for training.
+    :param rng: The random number generator.
     """
 
     def __init__(
@@ -38,13 +57,27 @@ class HiddenReplayBuffer(BaseBuffer):
             (self.buffer_size, *hidden_state_space.shape), dtype=hidden_state_space.dtype
         )
 
-    def add(self, obs, next_obs, action, reward, done, infos, hidden_state, next_hidden_state) -> None:
-        super().add(obs, next_obs, action, reward, done, infos)
-        pos = (self.pos - 1 + self.buffer_size) % self.buffer_size
-        self.hidden_states[pos] = hidden_state
-        self.next_hidden_states[pos] = next_hidden_state
+    def add(
+        self,
+        obs: np.ndarray,
+        next_obs: np.ndarray,
+        action: np.ndarray,
+        reward: float,
+        done: bool,
+        hidden_state: np.ndarray,
+        next_hidden_state: np.ndarray,
+    ) -> None:
+        self.hidden_states[self.pos] = hidden_state
+        self.next_hidden_states[self.pos] = next_hidden_state
+        super().add(obs, next_obs, action, reward, done)
 
-    def _get_samples(self, batch_inds: np.ndarray):
+    def _get_samples(self, batch_inds: np.ndarray) -> HiddenReplayBufferSamples:
+        """
+        Get a batch of samples from the replay buffer.
+
+        :param batch_inds: The indices of the samples to get.
+        :return: A batch of samples.
+        """
         samples = super()._get_samples(batch_inds)
         hidden_states = self.hidden_states[batch_inds]
         next_hidden_states = self.next_hidden_states[batch_inds]

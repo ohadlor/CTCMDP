@@ -18,6 +18,23 @@ class TD3(BaseAlgorithm):
     """
     Twin Delayed Deep Deterministic Policy Gradient (TD3)
     Addressing Function Approximation Error in Actor-Critic Methods.
+
+    :param env: The environment to learn from.
+    :param lr: The learning rate for the optimizers.
+    :param buffer_size: The size of the replay buffer.
+    :param learning_starts: The number of steps before learning starts.
+    :param batch_size: The size of the batches for training.
+    :param gamma: The discount factor.
+    :param tau: The soft update coefficient.
+    :param gradient_steps: The number of gradient steps to take after each rollout.
+    :param action_noise_std: The standard deviation of the action noise.
+    :param policy_delay: The number of steps to wait before updating the policy.
+    :param target_policy_noise: The standard deviation of the target policy noise.
+    :param target_noise_clip: The clip value for the target policy noise.
+    :param device: The device to use for training.
+    :param tensorboard_log: The path to the tensorboard log directory.
+    :param policy_path: The path to a pretrained policy.
+    :param seed: The seed for the random number generator.
     """
 
     def __init__(
@@ -61,12 +78,12 @@ class TD3(BaseAlgorithm):
         self.actor_optimizer = None
         self.critic_optimizer = None
 
-        if policy_path is not None:
-            self.load(policy_path)
-
         self._n_updates = 0
         self._setup_model()
         self._make_aliases()
+
+        if policy_path is not None:
+            self.policy.load_actor(policy_path)
 
     def _setup_model(self):
         self.policy = TD3Policy(
@@ -138,9 +155,7 @@ class TD3(BaseAlgorithm):
             - The unscaled action to be used in the environment.
             - The scaled action (between -1 and 1) to be stored in the buffer.
         """
-        # Get scaled action from the actor network
         if num_timesteps < self.learning_starts:
-            # Sample a random action from a uniform distribution between -1 and 1
             unscaled_action = self.action_space.sample()
         else:
             unscaled_action = self.predict(obs)
@@ -168,37 +183,35 @@ class TD3(BaseAlgorithm):
 
         unscaled_action, scaled_action = self.sample_action(obs, num_timesteps)
 
-        # Step the environment
         new_obs, reward, terminated, truncated, infos = self.env.step(unscaled_action)
 
-        # Add the transition to the replay buffer
         self.replay_buffer.add(obs, new_obs, scaled_action, reward, terminated)
 
         return new_obs, reward, terminated, truncated, infos
 
     def predict(self, obs: np.ndarray) -> np.ndarray:
-        """
-        Get the action from the policy.
-        :param obs: Observation from the environment.
-        :return: The action.
-        """
         return self.policy.predict(obs)
 
     def learn(
         self,
         total_timesteps: int,
-        log_interval: int = 4,
-        tb_log_name: str = "TD3",
+        log_interval: int = 1,
         reset_num_timesteps: bool = True,
         progress_bar: bool = False,
     ):
+        """
+        Train the agent for a given number of timesteps.
+        :param total_timesteps: The total number of timesteps to train for.
+        :param log_interval: The number of timesteps between each log.
+        :param reset_num_timesteps: Whether to reset the number of timesteps.
+        :param progress_bar: Whether to show a progress bar.
+        """
         if self.tensorboard_log is not None and self.logger is None:
             from torch.utils.tensorboard import SummaryWriter
 
             self.logger = SummaryWriter(log_dir=self.tensorboard_log)
         num_timesteps = 0
 
-        # Reset the environment
         obs, _ = self.env.reset(seed=self.seed)
 
         if progress_bar:

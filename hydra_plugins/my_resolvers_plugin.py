@@ -6,6 +6,21 @@ from coolname import generate_slug
 
 
 def custom_dir_resolver(agent_cfg: DictConfig, env_cfg: DictConfig):
+    """
+    Generate a custom directory name for the run.
+
+    Parameters
+    ----------
+    agent_cfg : DictConfig
+        The agent configuration.
+    env_cfg : DictConfig
+        The environment configuration.
+
+    Returns
+    -------
+    str
+        The custom directory name.
+    """
     cool_name = generate_slug(2)
     timestamp = datetime.now().strftime("%Y%m%d")
     run_name = f"{timestamp}_{cool_name}_{env_cfg.name}"
@@ -24,13 +39,20 @@ def floor_div_resolver(a: float, b: float) -> int:
 
 
 def seed_sequence_resolver(n: int, entropy: int) -> str:
-    """
-    Generates a comma-separated string of n seeds using numpy.random.SeedSequence.
-    This is compatible with Hydra's sweeper.
-    """
     seed_sequence = np.random.SeedSequence(entropy)
     seeds = seed_sequence.generate_state(n)
+    return seeds.tolist()
     return ",".join(map(str, seeds))
+
+
+def linspace_resolver(start: float, end: float, steps: int) -> str:
+    interval = np.linspace(start, end, steps)
+    return ",".join(map(str, interval))
+
+
+def logspace_resolver(start: float, end: float, steps: int) -> str:
+    interval = np.logspace(start, end, steps)
+    return ",".join(map(str, interval))
 
 
 resolvers = {
@@ -38,6 +60,8 @@ resolvers = {
     "int_product": int_product_resolver,
     "floor_div": floor_div_resolver,
     "custom_dir": custom_dir_resolver,
+    "linspace": linspace_resolver,
+    "logspace": logspace_resolver,
 }
 for resolver_name, resolver in resolvers.items():
     if not OmegaConf.has_resolver(resolver_name):

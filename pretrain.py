@@ -8,8 +8,16 @@ from src.common.managment import set_torch_gpu
 
 
 # Training function to create pretrained networks for TD3, vanilla-TC-M2TD3, stacked-TC-M2TD3, oracle-TC-M2TD3
-@hydra.main(config_path="configs", config_name="test_config", version_base=None)
+@hydra.main(config_path="configs", config_name="local_config", version_base=None)
 def main(cfg: DictConfig):
+    """
+    Main function for training the agent.
+
+    Parameters
+    ----------
+    cfg : DictConfig
+        The configuration object.
+    """
     hydra_cfg = HydraConfig.get()
     job_id = hydra_cfg.job.get("num", None)
     if job_id is not None:

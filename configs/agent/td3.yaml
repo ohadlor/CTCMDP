@@ -1,3 +1,4 @@
 model:
   _target_: src.agents.td3.TD3
 radius: null
+bootstrap: TD3

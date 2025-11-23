@@ -9,6 +9,31 @@ from src.networks import Actor, Critic
 
 
 class TD3Policy:
+    """
+    Policy for the Twin-Delayed Deep Deterministic Policy Gradient (TD3) algorithm.
+
+    Parameters
+    ----------
+    observation_space : spaces.Box
+        The observation space of the environment.
+    action_space : spaces.Box
+        The action space of the environment.
+    lr : int
+        The learning rate for the optimizers.
+    net_arch : list[int], optional
+        The architecture of the networks, by default [400, 300].
+    activation_fn : nn.Module, optional
+        The activation function to use, by default nn.ReLU.
+    n_critics : int, optional
+        The number of critics to use, by default 2.
+    device : str, optional
+        The device to use for training, by default "auto".
+    optimizer_class : th.optim.Optimizer, optional
+        The optimizer class to use, by default th.optim.Adam.
+    optimizer_kwargs : dict, optional
+        Keyword arguments for the optimizer, by default None.
+    """
+
     def __init__(
         self,
         observation_space: spaces.Box,
@@ -72,6 +97,19 @@ class TD3Policy:
         return self.unscale_action(action)
 
     def unscale_action(self, squashed_action: Union[np.ndarray, th.Tensor]) -> Union[np.ndarray, th.Tensor]:
+        """
+        Unscale an action from [-1, 1] to the original action space.
+
+        Parameters
+        ----------
+        squashed_action : Union[np.ndarray, th.Tensor]
+            The action to unscale.
+
+        Returns
+        -------
+        Union[np.ndarray, th.Tensor]
+            The unscaled action.
+        """
         if isinstance(squashed_action, th.Tensor):
             device = squashed_action.device
             action_space_low_th = th.from_numpy(self.action_space.low).to(device)
@@ -80,6 +118,19 @@ class TD3Policy:
         return self.action_space.low + (squashed_action + 1) * 0.5 * (self.action_space.high - self.action_space.low)
 
     def scale_action(self, action: np.ndarray) -> np.ndarray:
+        """
+        Scale an action to [-1, 1].
+
+        Parameters
+        ----------
+        action : np.ndarray
+            The action to scale.
+
+        Returns
+        -------
+        np.ndarray
+            The scaled action.
+        """
         if np.array_equal(self.action_space.high, self.action_space.low):
             return np.zeros_like(action)
         return (action - self.action_space.low) / (self.action_space.high - self.action_space.low) * 2 - 1

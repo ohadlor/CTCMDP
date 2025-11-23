@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from src.agents.td3 import TD3
 from src.agents.continual_algorithm import make_continual_learner
 from src.buffers.replay_buffer import TimeIndexedReplayBuffer
-from src.common.utils import polyak_update
+from src.common.utils import polyak_update, safe_mean
 from src.common.noise import NormalActionNoise
 
 
@@ -15,10 +15,32 @@ ContinualTD3 = make_continual_learner(TD3)
 
 
 class DiscountModelContinualTD3(ContinualTD3):
+    """
+    A continual learning version of TD3 that uses a simulator model and an additional discount to generate
+    additional data for training.
+
+    Parameters
+    ----------
+    p_real : float, optional
+        The probability of sampling a real transition from the replay buffer, by default 0.5.
+    sim_gamma : float, optional
+        The discount factor to use for the simulated environment, by default 0.9.
+    sim_horizon : int, optional
+        The horizon to use for the simulated environment, by default 1.
+    sim_action_noise_std : float, optional
+        The standard deviation of the action noise to use for the simulated environment, by default 0.1.
+    sim_buffer_size : int, optional
+        The size of the replay buffer for the simulated environment, by default 1_000_000.
+    actor_path : Optional[str], optional
+        The path to a pretrained actor, by default None.
+    critic_path : Optional[str], optional
+        The path to a pretrained critic, by default None.
+    """
+
     def __init__(
         self,
         p_real: float = 0.5,
-        sim_gamma: float = 0.99,
+        sim_gamma: float = 0.9,
         sim_horizon: int = 1,
         sim_action_noise_std: float = 0.1,
         sim_buffer_size: int = 1_000_000,
@@ -38,7 +60,7 @@ class DiscountModelContinualTD3(ContinualTD3):
         self.p_real = p_real
         self._setup_sim(sim_gamma, sim_horizon, sim_action_noise_std, sim_buffer_size)
 
-    def train(self, gradient_steps: int = 1, batch_size: int = 100) -> None:
+    def train(self, gradient_steps: int = 1, batch_size: int = 100) -> tuple[float, Optional[float]]:
         if self.stationary_env is not None and hasattr(self, "sim_replay_buffer"):
             self._add_to_sim_buffer()
 
@@ -46,12 +68,15 @@ class DiscountModelContinualTD3(ContinualTD3):
         actor_losses, critic_losses = [], []
         for _ in range(gradient_steps):
             self._n_updates += 1
+            # Select real or simulated data, use real or sim discont factor
             use_real = self.rng.binomial(1, self.p_real) == 1 if self.stationary_env is not None else True
 
             if use_real:
                 replay_data = self.replay_buffer.sample(batch_size)
+                gamma = self.gamma
             else:
                 replay_data = self.sim_replay_buffer.sample(batch_size)
+                gamma = self.sim_gamma
 
             with th.no_grad():
                 # Target actions  with clipped noise
@@ -62,7 +87,7 @@ class DiscountModelContinualTD3(ContinualTD3):
                 # Compute target
                 next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
                 next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
-                target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
+                target_q_values = replay_data.rewards + (1 - replay_data.dones) * gamma * next_q_values
 
             # Calculate critic loss
             current_q_values = self.critic(replay_data.observations, replay_data.actions)
@@ -86,18 +111,20 @@ class DiscountModelContinualTD3(ContinualTD3):
                 polyak_update(self.actor.parameters(), self.actor_target.parameters(), self.tau)
                 polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
 
-        mean_critic_loss = np.mean(critic_losses) if critic_losses else 0.0
-        mean_actor_loss = np.mean(actor_losses) if actor_losses else None
-
-        return mean_critic_loss, mean_actor_loss
+        return safe_mean(critic_losses), safe_mean(actor_losses)
 
     def _add_to_sim_buffer(self) -> None:
+        """
+        Add transitions to the simulation replay buffer.
+        """
         self.sim_replay_buffer.increment_time_indices()
         # obs, _ = self.stationy_env.reset(seed=self.seed)
+        # Start rollout from the last true observation
         obs = self.last_obs
 
         for _ in range(self.sim_horizon):
-            action = self.predict(obs)
+            # Create simulated rollout for buffer
+            action = self.predict(obs, learning=False)
             scaled_action = self.policy.scale_action(action)
 
             if self.sim_action_noise is not None:
@@ -115,20 +142,37 @@ class DiscountModelContinualTD3(ContinualTD3):
                 break
 
     def _setup_sim(self, gamma: float, horizon: int, action_noise_std: float, buffer_size: int):
+        """
+        Setup the simulation environment.
+
+        Parameters
+        ----------
+        gamma : float
+            The discount factor to use for the simulated environment.
+        horizon : int
+            The horizon to use for the simulated environment.
+        action_noise_std : float
+            The standard deviation of the action noise to use for the simulated environment.
+        buffer_size : int
+            The size of the replay buffer for the simulated environment.
+        """
         if self.p_real < 1.0:
             self.sim_horizon = horizon
+            self.sim_gamma = gamma
             self.sim_action_noise = NormalActionNoise(mean=0, std=action_noise_std)
             self.sim_replay_buffer = TimeIndexedReplayBuffer(
                 buffer_size * self.sim_horizon,
                 self.observation_space,
                 self.action_space,
-                gamma,
+                self.sim_gamma,
                 device=self.device,
                 rng=self.rng,
             )
 
     def _load_actor(self, path: str) -> None:
+
         self.policy.load_actor(path)
 
     def _load_critic(self, path: str) -> None:
+
         self.policy.load_critic(path)

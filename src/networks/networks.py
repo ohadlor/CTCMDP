@@ -5,6 +5,21 @@ from gymnasium import spaces
 
 # output is squashed, make sure to unsquash
 class Actor(nn.Module):
+    """
+    An actor network for a DDPG-style agent.
+
+    Parameters
+    ----------
+    observation_space : spaces.Box
+        The observation space of the environment.
+    action_space : spaces.Box
+        The action space of the environment.
+    net_arch : list[int], optional
+        The architecture of the network, by default [256, 256].
+    activation_fn : nn.Module, optional
+        The activation function to use, by default nn.ReLU.
+    """
+
     def __init__(
         self,
         observation_space: spaces.Box,
@@ -33,6 +48,21 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
+    """
+    A critic network for a DDPG-style agent.
+
+    Parameters
+    ----------
+    observation_space : spaces.Box
+        The observation space of the environment.
+    action_space : spaces.Box
+        The action space of the environment.
+    net_arch : list[int], optional
+        The architecture of the network, by default [256, 256].
+    n_critics : int, optional
+        The number of critics to use, by default 2.
+    """
+
     def __init__(self, observation_space: spaces.Box, action_space: spaces.Box, net_arch=[256, 256], n_critics=2):
         super().__init__()
         obs_dim = observation_space.shape[0]

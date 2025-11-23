@@ -1,53 +1,27 @@
 defaults:
   - experiments: null
   - agent: pretrained_continual_td3/td3
-  - env: halfcheetah
   - schedule: brownian
-  # - override hydra/launcher: joblib_tests
+  - override hydra/launcher: submitit_custom
   - _self_
 
-experiment_name: null
 master_seed: 2671232903
 env:
-  max_episode_steps: 15_000
+  max_episode_steps: 1e5
 agent:
   radius: 0.01
-  learning_starts: 500
-iterations: 1
+iterations: 10
 
-num_gpus: 1 # Total physical GPUs available
+num_gpus: 6 # Total physical GPUs available
 gpu_slot_size: 4 # Jobs per GPU
 parallel_task: ${int_product:${num_gpus},${gpu_slot_size}}
 
 hydra:
-  # mode: MULTIRUN
+  mode: MULTIRUN
   sweep:
     dir: outputs/${experiment_name}
     subdir: ${custom_dir:${agent},${env}}
   sweeper:
     params:
-      +env.name: choice(ant, halfcheetah, humanoidstandup, walker2d)
+      +env.name: choice(ant, halfcheetah, humanoidstandup, walker2d) # Hopper is not used as the rrls implementation has some parameter issues
       +seed: ${seed_sequence:${iterations},${master_seed}}
-#######################################
-
-# defaults:
-#   - pretrain: td3 # Arguments: td3, vanilla_tc_m2td3, stacked_tc_m2td3, oracle_tc_m2td3
-#   - override hydra/launcher: joblib_tests
-#   - _self_
-
-# seed: 2671232903
-# total_timesteps: 1e3
-
-# num_gpus: 1 # Total physical GPUs available
-# gpu_slot_size: 4 # Jobs per GPU
-# parallel_task: ${int_product:${num_gpus},${gpu_slot_size}}
-
-# hydra:
-#   mode: MULTIRUN
-#   sweep:
-#     dir: outputs/pretrain
-#     subdir: ${custom_dir:${agent},${env}}
-#   sweeper:
-#     params:
-#       pretrain: choice(td3, vanilla_tc_m2td3, stacked_tc_m2td3, oracle_tc_m2td3)
-#       env.name: choice(ant, halfcheetah, humanoidstandup, walker2d)

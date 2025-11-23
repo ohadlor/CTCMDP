@@ -19,6 +19,18 @@ def get_param_bounds(env_name: str, bound_dim_name: str = "THREE_DIM"):
     """
     Gets the parameter bounds dictionary from the gym id string and a dimension name.
     For example, for "rrls/robust-ant-v0" and "THREE_DIM", it returns the corresponding bounds dictionary.
+
+    Parameters
+    ----------
+    env_name : str
+        The name of the environment.
+    bound_dim_name : str, optional
+        The name of the bound dimension, by default "THREE_DIM".
+
+    Returns
+    -------
+    dict
+        The parameter bounds dictionary.
     """
 
     module_name, class_name_base = env_mapping[env_name]
@@ -48,6 +60,21 @@ def get_param_bounds(env_name: str, bound_dim_name: str = "THREE_DIM"):
 
 
 def bounds_to_space(param_bounds: dict[str, tuple[float, float]], radius: float) -> tuple[spaces.Box, spaces.Box, list]:
+    """
+    Convert parameter bounds to observation and action spaces.
+
+    Parameters
+    ----------
+    param_bounds : dict[str, tuple[float, float]]
+        A dictionary mapping parameter names to their bounds.
+    radius : float
+        The radius of the action space.
+
+    Returns
+    -------
+    tuple[spaces.Box, spaces.Box, list]
+        A tuple containing the observation space, the action space, and the list of parameter names.
+    """
     params = list(param_bounds.keys())
 
     # Observation space
@@ -67,6 +94,16 @@ def bounds_to_space(param_bounds: dict[str, tuple[float, float]], radius: float)
 def remove_record_video_wrapper(env):
     """
     Recursively removes all instances of the RecordVideo wrapper from the environment chain.
+
+    Parameters
+    ----------
+    env : gym.Env
+        The environment to remove the wrapper from.
+
+    Returns
+    -------
+    gym.Env
+        The environment without the RecordVideo wrapper.
     """
     if isinstance(env, RecordVideo):
         # If the current env is RecordVideo, unwrap it and continue searching
@@ -80,6 +117,23 @@ def remove_record_video_wrapper(env):
 def find_attribute_in_stack(start_env, attribute_name: str):
     """
     Searches down the wrapper stack starting from start_env for the attribute_name.
+
+    Parameters
+    ----------
+    start_env : gym.Env
+        The environment to start the search from.
+    attribute_name : str
+        The name of the attribute to search for.
+
+    Returns
+    -------
+    any
+        The value of the attribute if found.
+
+    Raises
+    ------
+    AttributeError
+        If the attribute is not found in the wrapper stack.
     """
     current_env = start_env
 
@@ -102,12 +156,17 @@ def check_for_wrapper(env, wrapper_class):
     """
     Checks if a specific wrapper class is applied to a Gymnasium environment.
 
-    Args:
-        env (gymnasium.Env): The Gymnasium environment instance.
-        wrapper_class (type): The class of the wrapper to check for (e.g., gym.wrappers.ClipAction).
+    Parameters
+    ----------
+    env : gymnasium.Env
+        The Gymnasium environment instance.
+    wrapper_class : type
+        The class of the wrapper to check for (e.g., gym.wrappers.ClipAction).
 
-    Returns:
-        bool: True if the wrapper is found, False otherwise.
+    Returns
+    -------
+    bool
+        True if the wrapper is found, False otherwise.
     """
     current_env = env
     while True:
@@ -122,6 +181,21 @@ def check_for_wrapper(env, wrapper_class):
 
 
 def name_to_env_id(name: str, is_rrls: bool = True) -> str:
+    """
+    Convert a name to a Gymnasium environment ID.
+
+    Parameters
+    ----------
+    name : str
+        The name of the environment.
+    is_rrls : bool, optional
+        Whether the environment is an rrls environment, by default True.
+
+    Returns
+    -------
+    str
+        The Gymnasium environment ID.
+    """
     vanilla_map = {
         "ant": "Ant-v5",
         "halfcheetah": "HalfCheetah-v5",
@@ -143,7 +217,21 @@ def name_to_env_id(name: str, is_rrls: bool = True) -> str:
 
 
 def remove_extra_time_wrapper(env: gym.Env, n_time_wrappers_found: int = 0) -> gym.Env:
-    """Recursively traverses the environment wrapper stack and removes any TimeLimit wrappers after the first one."""
+    """
+    Recursively traverses the environment wrapper stack and removes any TimeLimit wrappers after the first one.
+
+    Parameters
+    ----------
+    env : gym.Env
+        The environment to remove the wrappers from.
+    n_time_wrappers_found : int, optional
+        The number of TimeLimit wrappers found so far, by default 0.
+
+    Returns
+    -------
+    gym.Env
+        The environment without the extra TimeLimit wrappers.
+    """
     if not isinstance(env, gym.Wrapper):
         # Base case: we've reached the innermost environment.
         return env
@@ -161,3 +249,11 @@ def remove_extra_time_wrapper(env: gym.Env, n_time_wrappers_found: int = 0) -> g
         # We recurse on the inner environment to process the rest of the stack.
         env.env = remove_extra_time_wrapper(env.env, n_time_wrappers_found)
         return env
+
+
+def find_robust_env(env: gym.Env) -> gym.Env:
+    current_env = env
+    while hasattr(current_env, "env"):
+        if "Robust" in current_env.__class__.__name__:
+            return current_env
+        current_env = current_env.env
