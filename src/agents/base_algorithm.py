@@ -48,6 +48,10 @@ class BaseAlgorithm(ABC):
 
         self.policy = None
 
+    def update_logger_path(self, path: str) -> SummaryWriter:
+        self.logger = SummaryWriter(log_dir=path)
+        return self.logger
+
     @abstractmethod
     def train(self, gradient_steps: int, batch_size: int) -> None:
         """
@@ -74,17 +78,6 @@ class BaseAlgorithm(ABC):
         Create aliases for the policy's components. This is called by the constructor.
         """
         raise NotImplementedError
-
-    def set_logger(self, logger: SummaryWriter) -> None:
-        """
-        Set the logger.
-
-        Parameters
-        ----------
-        logger : SummaryWriter
-            The logger to use.
-        """
-        self.logger = logger
 
     def save(self, path: str) -> None:
         """

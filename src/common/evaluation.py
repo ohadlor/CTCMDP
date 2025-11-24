@@ -161,14 +161,16 @@ def evaluate_policy_hidden_state(
             max_steps = temp_env._max_episode_steps
             break
         temp_env = temp_env.env
-    tensorboard_log = model.tensorboard_log
+
     for i, seed in tqdm(enumerate(seeds), total=len(seeds), desc="Iteration Loop"):
         model.set_seed(seed)
         adversary_policy.set_seed(seed)
-        model.tensorboard_log = tensorboard_log + f"/iter{i}"
+        logger = model.update_logger_path(model.tensorboard_log + f"/iter_{i}")
+
         episode_rewards = []
         done = False
         observation, hidden_state, _ = env.reset(seed=seed)
+
         if adversary_policy is not None:
             adversary_policy.reset(start_state=hidden_state)
         if is_continual_learner:
@@ -188,7 +190,10 @@ def evaluate_policy_hidden_state(
                 hidden_action = np.zeros_like(hidden_state)
 
             next_observation, next_hidden_state, reward, terminated, truncated, _ = env.step(action, hidden_action)
+
             episode_rewards.append(reward)
+            logger.add_scalar("rollout/avg_rew", np.mean(episode_rewards), current_step)
+            logger.add_scalar("rollout/rew", reward, current_step)
             done = terminated or truncated
             sample = {
                 "obs": observation,

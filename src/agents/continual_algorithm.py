@@ -58,6 +58,7 @@ def make_continual_learner(
             sample: Optional[dict] = None,
             stationary_env: Optional[FrozenHiddenObservation] = None,
             learning: bool = True,
+            log_interval: int = 1,
         ) -> np.ndarray:
             """
             Get the policy action from an observation.
@@ -92,7 +93,8 @@ def make_continual_learner(
 
                 # Perform a training step
                 if self.num_timesteps >= self.learning_starts and self.replay_buffer.size > 0:
-                    self.train(gradient_steps=self.gradient_steps, batch_size=self.batch_size)
+                    losses = self.train(gradient_steps=self.gradient_steps, batch_size=self.batch_size)
+                    self.loss_logger(losses, log_interval)
 
             return action
 

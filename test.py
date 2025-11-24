@@ -7,7 +7,7 @@ from omegaconf import DictConfig
 from src.common.managment import set_torch_gpu
 
 
-@hydra.main(config_path="configs", config_name="local_config", version_base=None)
+@hydra.main(config_path="configs", config_name="continuous_as_td3", version_base=None)
 def main(cfg: DictConfig):
     """
     Main function for testing the agent.

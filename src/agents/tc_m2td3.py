@@ -7,7 +7,7 @@ from gymnasium import Env
 from torch.nn import functional as F
 
 from src.buffers import HiddenReplayBuffer
-from src.common.utils import polyak_update, safe_mean
+from src.common.utils import polyak_update
 
 from .base_algorithm import BaseAlgorithm
 from src.common.noise import NormalActionNoise
@@ -189,7 +189,11 @@ class TCM2TD3(BaseAlgorithm):
                 polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
                 polyak_update(self.adversary.parameters(), self.adversary_target.parameters(), self.tau)
 
-        return safe_mean(critic_losses), safe_mean(actor_losses), safe_mean(adversary_losses)
+        mean_critic_loss = np.mean(critic_losses) if critic_losses else 0.0
+        mean_actor_loss = np.mean(actor_losses) if actor_losses else None
+        mean_adversary_loss = np.mean(adversary_losses) if adversary_losses else None
+
+        return mean_critic_loss, mean_actor_loss, mean_adversary_loss
 
     def sample_action(self, actor_obs: np.ndarray, num_timestep: int) -> tuple[np.ndarray, np.ndarray]:
         """
@@ -316,7 +320,7 @@ class TCM2TD3(BaseAlgorithm):
                 critic_loss, actor_loss, adversary_loss = self.train(self.gradient_steps, self.batch_size)
                 if self.logger and self._n_updates % log_interval == 0:
                     self.logger.add_scalar("loss/critic_loss", critic_loss, self._n_updates)
-                    if actor_loss:
+                    if actor_loss is not None:
                         self.logger.add_scalar("loss/actor_loss", actor_loss, self._n_updates)
                         self.logger.add_scalar("loss/adversary_loss", adversary_loss, self._n_updates)
 

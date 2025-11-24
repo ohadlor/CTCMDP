@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from src.agents.td3 import TD3
 from src.agents.continual_algorithm import make_continual_learner
 from src.buffers.replay_buffer import TimeIndexedReplayBuffer
-from src.common.utils import polyak_update, safe_mean
+from src.common.utils import polyak_update
 from src.common.noise import NormalActionNoise
 
 
@@ -111,7 +111,10 @@ class DiscountModelContinualTD3(ContinualTD3):
                 polyak_update(self.actor.parameters(), self.actor_target.parameters(), self.tau)
                 polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
 
-        return safe_mean(critic_losses), safe_mean(actor_losses)
+        mean_critic_loss = np.mean(critic_losses) if critic_losses else 0.0
+        mean_actor_loss = np.mean(actor_losses) if actor_losses else None
+
+        return mean_critic_loss, mean_actor_loss
 
     def _add_to_sim_buffer(self) -> None:
         """
@@ -168,6 +171,13 @@ class DiscountModelContinualTD3(ContinualTD3):
                 device=self.device,
                 rng=self.rng,
             )
+
+    def loss_logger(self, losses: tuple[np.ndarray, np.ndarray], log_interval: int = 1):
+        critic_loss, actor_loss = losses
+        if self.logger and self._n_updates % log_interval == 0:
+            self.logger.add_scalar("loss/critic_loss", critic_loss, self._n_updates)
+            if actor_loss is not None:
+                self.logger.add_scalar("loss/actor_loss", actor_loss, self._n_updates)
 
     def _load_actor(self, path: str) -> None:
 
