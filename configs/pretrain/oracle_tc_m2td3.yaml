@@ -1,7 +1,0 @@
-# @package _global_
-defaults:
-  - /agent: _oracle_tc_m2td3
-  - _self_
-
-env:
-  name: halfcheetah

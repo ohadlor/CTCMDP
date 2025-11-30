@@ -1,0 +1,11 @@
+# @package _global_
+# Pretrain with no shrink factor
+env:
+  shrink_factor: 0
+experiment_name: ${env.shrink_factor}
+
+hydra:
+  mode: MULTIRUN
+  sweeper:
+    params:
+      agent: choice(td3, vanilla_tc_m2td3, stacked_tc_m2td3, oracle_tc_m2td3)

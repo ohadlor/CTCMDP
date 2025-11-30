@@ -132,7 +132,7 @@ class LinearSchedule(BaseActionSchedule):
         self,
         action_space: spaces.Box,
         observation_space: spaces.Box,
-        steps: int = 100,
+        steps: int = 1000,
     ):
         super().__init__(action_space, observation_space)
         self.steps = steps

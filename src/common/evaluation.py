@@ -111,8 +111,9 @@ def evaluate_policy_hidden_state(
     env: gym.Env,
     model: BaseAlgorithm,
     adversary_policy: Optional[BaseActionSchedule] = None,
-    render: bool = False,
-    callback: Optional[Callable[[dict[str, Any], dict[str, Any]], None]] = None,
+    total_timesteps: int = 1e5,
+    # render: bool = False,
+    # callback: Optional[Callable[[dict[str, Any], dict[str, Any]], None]] = None,
     return_episode_rewards: bool = False,
     seeds: Optional[list[int]] = [],
 ):
@@ -167,33 +168,29 @@ def evaluate_policy_hidden_state(
         adversary_policy.set_seed(seed)
         logger = model.update_logger_path(model.tensorboard_log + f"/iter_{i}")
 
-        episode_rewards = []
-        done = False
+        ep_rewards = []
+        iter_rewards = []
         observation, hidden_state, _ = env.reset(seed=seed)
 
         if adversary_policy is not None:
             adversary_policy.reset(start_state=hidden_state)
         if is_continual_learner:
             continual_args["stationary_env"] = env.copy_to_stationary_env()
-            continual_args["sample"] = None
 
-        current_step = 0
         pbar = tqdm(total=max_steps, desc="Continual Learning Evaluation", leave=False)
-        while not done:
-            current_step += 1
+        for current_step in range(total_timesteps):
+            # Get observation
             if getattr(model, "oracle_actor", False):
                 observation = np.concatenate([observation, hidden_state])
+            # Predict (and learn)
             action = model.predict(observation, **continual_args)
             if adversary_policy is not None:
                 hidden_action = adversary_policy.step(hidden_state)
             else:
                 hidden_action = np.zeros_like(hidden_state)
 
+            # Step env
             next_observation, next_hidden_state, reward, terminated, truncated, _ = env.step(action, hidden_action)
-
-            episode_rewards.append(reward)
-            logger.add_scalar("rollout/avg_rew", np.mean(episode_rewards), current_step)
-            logger.add_scalar("rollout/rew", reward, current_step)
             done = terminated or truncated
             sample = {
                 "obs": observation,
@@ -202,33 +199,42 @@ def evaluate_policy_hidden_state(
                 "reward": reward,
                 "done": done,
             }
-            pbar.update(1)
+            # Add to continual learner buffer
             if is_continual_learner:
+                model.add(sample)
                 continual_args["stationary_env"] = env.copy_to_stationary_env()
-                continual_args["sample"] = sample
 
             observation = next_observation
             hidden_state = next_hidden_state
 
-            if callback is not None:
-                callback(locals(), globals())
+            iter_rewards.append(reward)
+            ep_rewards.append(reward)
+            logger.add_scalar("rollout/avg_rew", np.mean(iter_rewards), current_step)
+            logger.add_scalar("rollout/rew", reward, current_step)
 
-            if render:
-                env.render()
-        all_rewards.append(episode_rewards)
+            # Handle episode termination
+            if done:
+                observation, hidden_state, _ = env.reset(seed=seed)
+                if adversary_policy is not None:
+                    adversary_policy.reset(start_state=hidden_state)
+
+                logger.add_scalar("rollout/ep_rew", sum(ep_rewards), current_step)
+                ep_rewards = []
+
+            pbar.update(1)
+            # if callback is not None:
+            #     callback(locals(), globals())
+
+            # if render:
+            #     env.render()
+        all_rewards.append(iter_rewards)
     pbar.close()
 
-    max_len = max(len(ep) for ep in all_rewards) if all_rewards else 0
-    padded_rewards = np.nan * np.ones((len(all_rewards), max_len))
-    for i, ep in enumerate(all_rewards):
-        padded_rewards[i, : len(ep)] = ep
-
+    all_rewards = np.array(all_rewards)
+    time_avg_reward = all_rewards.mean(axis=1)
     if return_episode_rewards:
-        return padded_rewards
+        return all_rewards
+    return time_avg_reward.mean(), time_avg_reward.std()
 
-    avg_reward = padded_rewards.mean(axis=1)
-    std_reward = avg_reward.std()
-    return avg_reward.mean(), std_reward
-
-    total_reward = padded_rewards.sum(axis=1)
+    total_reward = all_rewards.sum(axis=1)
     return total_reward.mean(), total_reward.std()

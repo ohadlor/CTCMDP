@@ -142,6 +142,7 @@ class TimeIndexedReplayBuffer(BaseBuffer):
         observation_space: spaces.Space,
         action_space: spaces.Space,
         gamma: float = 1.0,
+        reset_delay: int = 10000,
         device: str = "auto",
         rng: Optional[np.random.Generator] = None,
     ):
@@ -151,6 +152,9 @@ class TimeIndexedReplayBuffer(BaseBuffer):
         self.rng = rng
         self.time_indices = np.zeros((self.buffer_size,), dtype=np.int32)
         self.gamma = gamma
+        # Reset delay should be expected time steps to traverse 'radius' of hidden observation space
+        # ~ hidden observation space radius / hidden step size (depends on nature of hidden action selector)
+        self.reset_delay = reset_delay
 
     def add(self, obs, next_obs, action, reward, done) -> None:
         """
@@ -188,3 +192,9 @@ class TimeIndexedReplayBuffer(BaseBuffer):
         """
         n_entries = self.buffer_size if self.full else self.pos
         self.time_indices[:n_entries] += 1
+
+    def reset_from_env(self) -> None:
+        # Call when env is reset to add distance between resets for time_indices,
+        # such that samples from previous resets are less likely to be called
+        n_entries = self.buffer_size if self.full else self.pos
+        self.time_indices[:n_entries] = self.reset_delay

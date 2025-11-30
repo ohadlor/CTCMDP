@@ -4,10 +4,10 @@ import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 
-from src.common.managment import set_torch_gpu
+from src.common.managment import set_torch_gpu, update_bootstrap_path
 
 
-@hydra.main(config_path="configs", config_name="continuous_as_td3", version_base=None)
+@hydra.main(config_path="configs", config_name="local_test_config", version_base=None)
 def main(cfg: DictConfig):
     """
     Main function for testing the agent.
@@ -32,14 +32,10 @@ def main(cfg: DictConfig):
 
     print(f"Results will be saved to {output_dir}")
 
-    env = create_env(cfg, output_dir)
+    env = create_env(cfg)
 
-    agent_params = {"env": env, "tensorboard_log": output_dir}
-    if "continual" in cfg.agent.model._target_ and cfg.agent.get("bootstrap", None) is not None:
-        agent_params["actor_path"] = os.path.join("pretrained_models", cfg.env.name, cfg.agent.bootstrap + ".pth")
-        agent_params["critic_path"] = os.path.join("pretrained_models", cfg.env.name, "TD3" + ".pth")
-    elif cfg.agent.get("bootstrap", None) is not None:
-        agent_params["policy_path"] = os.path.join("pretrained_models", cfg.env.name, cfg.agent.bootstrap + ".pth")
+    agent_params = {"seed": cfg.master_seed, "env": env, "tensorboard_log": output_dir}
+    agent_params = update_bootstrap_path(agent_params, cfg)
     agent: TD3 = hydra.utils.instantiate(cfg.agent.model, **agent_params, _convert_="all")
 
     hidden_action_schedule: BaseActionSchedule = hydra.utils.instantiate(
@@ -61,6 +57,7 @@ def main(cfg: DictConfig):
     mean_reward, std_reward = evaluate_policy_hidden_state(
         model=agent,
         env=env,
+        total_timesteps=cfg.total_timesteps,
         adversary_policy=hidden_action_schedule,
         seeds=cfg.seeds,
     )

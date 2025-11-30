@@ -27,6 +27,9 @@ def custom_dir_resolver(agent_cfg: DictConfig, env_cfg: DictConfig):
     if "variant" in agent_cfg:
         run_name += f"_{agent_cfg.variant}"
     run_name += f"_{agent_cfg.model._target_.split('.')[-1]}"
+    shrink_factor = int(10 * agent_cfg.get("shrink_factor", 0))
+    if shrink_factor or agent_cfg.get("boot_with_shrink_factor", False):
+        run_name += "_shrink"
     return run_name
 
 

@@ -1,13 +1,16 @@
 defaults:
-  - pretrain: null
+  - pretrain: pretrain2
   - agent: td3
-  - override hydra/launcher: submitit_custom
+  - override hydra/launcher: joblib_tests
   - _self_
 
 seed: 2671232903
-total_timesteps: 1e6
+total_timesteps: 500
+agent:
+  model:
+    learning_starts: 100
 
-num_gpus: 6 # Total physical GPUs available
+num_gpus: 1 # Total physical GPUs available
 gpu_slot_size: 4 # Jobs per GPU
 parallel_task: ${int_product:${num_gpus},${gpu_slot_size}}
 
@@ -19,5 +22,3 @@ hydra:
   sweeper:
     params:
       +env.name: choice(ant, halfcheetah, humanoidstandup, walker2d) # Hopper is not used as the rrls implementation has some parameter issues
-
-# Experiments control for shrink_factor

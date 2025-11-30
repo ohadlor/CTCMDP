@@ -3,7 +3,6 @@ import numpy as np
 
 import gymnasium as gym
 from gymnasium import spaces
-from gymnasium.wrappers import RecordVideo
 
 # Mapping of rrls registered env name to (rrls.env_module, param_class_name)
 env_mapping = {
@@ -59,7 +58,9 @@ def get_param_bounds(env_name: str, bound_dim_name: str = "THREE_DIM"):
         )
 
 
-def bounds_to_space(param_bounds: dict[str, tuple[float, float]], radius: float) -> tuple[spaces.Box, spaces.Box, list]:
+def bounds_to_space(
+    param_bounds: dict[str, tuple[float, float]], radius: float, shrink_factor: float = 0.0
+) -> tuple[spaces.Box, spaces.Box, list]:
     """
     Convert parameter bounds to observation and action spaces.
 
@@ -69,17 +70,26 @@ def bounds_to_space(param_bounds: dict[str, tuple[float, float]], radius: float)
         A dictionary mapping parameter names to their bounds.
     radius : float
         The radius of the action space.
+    shrink_factor : float
+        The amount to shrink the hidden observation space, between 0 and 1 (0 is no shrinking)
 
     Returns
     -------
     tuple[spaces.Box, spaces.Box, list]
         A tuple containing the observation space, the action space, and the list of parameter names.
     """
+    assert shrink_factor >= 0 and shrink_factor <= 1, "Shrink factor is out of range"
+    assert radius >= 0, "Radius is negative"
     params = list(param_bounds.keys())
 
     # Observation space
     low_obs = np.array([param_bounds[param][0] for param in params], dtype=np.float32)
     high_obs = np.array([param_bounds[param][1] for param in params], dtype=np.float32)
+    middle_obs = (high_obs + low_obs) / 2
+    range_obs = (high_obs - low_obs) * (1 - shrink_factor) / 2
+    low_obs = middle_obs - range_obs
+    high_obs = middle_obs + range_obs
+
     obs_space = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
 
     # Action space
@@ -89,29 +99,6 @@ def bounds_to_space(param_bounds: dict[str, tuple[float, float]], radius: float)
     action_space = spaces.Box(low=low_act, high=high_act, dtype=np.float32)
 
     return obs_space, action_space, params
-
-
-def remove_record_video_wrapper(env):
-    """
-    Recursively removes all instances of the RecordVideo wrapper from the environment chain.
-
-    Parameters
-    ----------
-    env : gym.Env
-        The environment to remove the wrapper from.
-
-    Returns
-    -------
-    gym.Env
-        The environment without the RecordVideo wrapper.
-    """
-    if isinstance(env, RecordVideo):
-        # If the current env is RecordVideo, unwrap it and continue searching
-        return remove_record_video_wrapper(env.env)
-    elif hasattr(env, "env"):
-        # Otherwise, continue searching down the wrapper stack
-        env.env = remove_record_video_wrapper(env.env)
-    return env
 
 
 def find_attribute_in_stack(start_env, attribute_name: str):
@@ -214,41 +201,6 @@ def name_to_env_id(name: str, is_rrls: bool = True) -> str:
         return robust_map[name]
     else:
         return vanilla_map[name]
-
-
-def remove_extra_time_wrapper(env: gym.Env, n_time_wrappers_found: int = 0) -> gym.Env:
-    """
-    Recursively traverses the environment wrapper stack and removes any TimeLimit wrappers after the first one.
-
-    Parameters
-    ----------
-    env : gym.Env
-        The environment to remove the wrappers from.
-    n_time_wrappers_found : int, optional
-        The number of TimeLimit wrappers found so far, by default 0.
-
-    Returns
-    -------
-    gym.Env
-        The environment without the extra TimeLimit wrappers.
-    """
-    if not isinstance(env, gym.Wrapper):
-        # Base case: we've reached the innermost environment.
-        return env
-
-    is_time_limit_wrapper = isinstance(env, gym.wrappers.TimeLimit)
-    if is_time_limit_wrapper:
-        n_time_wrappers_found += 1
-
-    if is_time_limit_wrapper and n_time_wrappers_found > 1:
-        # This is an extra TimeLimit wrapper, so we skip it by recursing on its inner environment.
-        # We pass the count along to ensure subsequent nested TimeLimit wrappers are also removed.
-        return remove_extra_time_wrapper(env.env, n_time_wrappers_found)
-    else:
-        # This is not an extra TimeLimit wrapper, so we keep it.
-        # We recurse on the inner environment to process the rest of the stack.
-        env.env = remove_extra_time_wrapper(env.env, n_time_wrappers_found)
-        return env
 
 
 def find_robust_env(env: gym.Env) -> gym.Env:

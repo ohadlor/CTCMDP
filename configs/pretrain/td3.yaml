@@ -1,7 +1,0 @@
-# @package _global_
-defaults:
-  - /agent: td3
-  - _self_
-
-env:
-  name: ant

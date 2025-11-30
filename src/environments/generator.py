@@ -1,13 +1,13 @@
 from omegaconf import DictConfig
 import gymnasium as gym
-from gymnasium.wrappers import FrameStackObservation, TimeAwareObservation, FlattenObservation, TimeLimit
+from gymnasium.wrappers import FrameStackObservation, TimeAwareObservation, FlattenObservation
 from rrls.wrappers import DomainRandomization
 
-from .env_utils import get_param_bounds, name_to_env_id, remove_extra_time_wrapper
-from .wrappers import TCRMDP, SplitActionObservationSpace
+from .env_utils import get_param_bounds, name_to_env_id
+from .wrappers import TCRMDP, SplitActionObservationSpace, BernoulliTruncation
 
 
-def create_env(cfg: DictConfig, run_dir: str) -> gym.Env:
+def create_env(cfg: DictConfig) -> gym.Env:
     """
     Creates the environment.
 
@@ -24,29 +24,29 @@ def create_env(cfg: DictConfig, run_dir: str) -> gym.Env:
         The created environment.
     """
     # Define gym env
-    is_rrls = hasattr(cfg.agent, "radius")
+    radius = cfg.agent.get("radius", None)
+    is_rrls = False if radius is None else True
     env_id = name_to_env_id(cfg.env.name, is_rrls)
-    max_episode_steps = cfg.env.get("max_episode_steps", None)
 
-    env = gym.make(env_id, max_episode_steps=-1)
-    if is_rrls:
-        param_bounds = get_param_bounds(cfg.env.name)
+    env = gym.make(env_id)
+    # If test time add the following wrappers
+    param_bounds = get_param_bounds(cfg.env.name)
+    if cfg.get("test", False):
         # Initial hidden states are randomized upon reset
         env = DomainRandomization(env, params_bound=param_bounds)
-    # Time limit must be added after domain randomization
-    env = TimeLimit(env, max_episode_steps)
-
-    # rrls seems to incorporate an extra timelimit wrapper
-    env = remove_extra_time_wrapper(env)
+        # truncation is sampled true with probability p
+        env = BernoulliTruncation(env, seed=cfg.master_seed)
 
     if cfg.env.get("time_aware", False):
         env = TimeAwareObservation(env)
 
-    if cfg.agent.get("variant", "") == "stacked":
+    if cfg.agent.get("variant", None) == "stacked":
         env = FlattenObservation(FrameStackObservation(env, stack_size=2))
-    if is_rrls:
+
+    # If robust or test time make into TCRMDP
+    if is_rrls or cfg.get("test", False):
         # Create the augmented environment with hidden variable
-        env = TCRMDP(env, param_bounds, cfg.agent.radius)
-        env = SplitActionObservationSpace(env)
+        shrink_factor = cfg.env.get("shrink_factor", 0)
+        env = SplitActionObservationSpace(TCRMDP(env, param_bounds, radius, shrink_factor))
 
     return env

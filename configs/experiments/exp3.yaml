@@ -1,0 +1,11 @@
+# @package _global_
+# sweep over schedules
+
+experiment_name: shrink_factor
+hydra:
+  sweeper:
+    params:
+      agent: choice(vanilla_tc_m2td3, stacked_tc_m2td3, oracle_tc_m2td3, pretrained_continual_td3/tc_m2td3)
+
+agent:
+  boot_with_shrink_factor: true

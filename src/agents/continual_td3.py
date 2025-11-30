@@ -39,17 +39,25 @@ class DiscountModelContinualTD3(ContinualTD3):
 
     def __init__(
         self,
-        p_real: float = 0.5,
+        p_real: Optional[float] = None,
         sim_gamma: float = 0.9,
         sim_horizon: int = 1,
-        sim_action_noise_std: float = 0.1,
+        sim_action_noise_std: float = 0.3,
         sim_buffer_size: int = 1_000_000,
         actor_path: Optional[str] = None,
         critic_path: Optional[str] = None,
         *args,
         **kwargs,
     ):
+
         super().__init__(*args, **kwargs)
+        if self.gamma is None:
+            self.gamma = sim_gamma
+        self.replay_buffer = self._base_to_time_indexed_buffer(
+            self.replay_buffer,
+            gamma=self.gamma,
+        )
+        self.replay_buffers = [self.replay_buffer]
 
         if actor_path is not None:
             self._load_actor(actor_path)
@@ -57,10 +65,11 @@ class DiscountModelContinualTD3(ContinualTD3):
             self._load_critic(critic_path)
 
         self.sim_action_noise = None
-        self.p_real = p_real
+        if p_real is None:
+            self.p_real = 1 / (sim_horizon + 1)
         self._setup_sim(sim_gamma, sim_horizon, sim_action_noise_std, sim_buffer_size)
 
-    def train(self, gradient_steps: int = 1, batch_size: int = 100) -> tuple[float, Optional[float]]:
+    def train(self, gradient_steps: int = 2, batch_size: int = 100) -> tuple[float, Optional[float]]:
         if self.stationary_env is not None and hasattr(self, "sim_replay_buffer"):
             self._add_to_sim_buffer()
 
@@ -159,7 +168,7 @@ class DiscountModelContinualTD3(ContinualTD3):
         buffer_size : int
             The size of the replay buffer for the simulated environment.
         """
-        if self.p_real < 1.0:
+        if horizon >= 1:
             self.sim_horizon = horizon
             self.sim_gamma = gamma
             self.sim_action_noise = NormalActionNoise(mean=0, std=action_noise_std)
@@ -171,6 +180,7 @@ class DiscountModelContinualTD3(ContinualTD3):
                 device=self.device,
                 rng=self.rng,
             )
+            self.replay_buffers.append(self.sim_replay_buffer)
 
     def loss_logger(self, losses: tuple[np.ndarray, np.ndarray], log_interval: int = 1):
         critic_loss, actor_loss = losses

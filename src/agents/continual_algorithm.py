@@ -3,6 +3,7 @@ from typing import Optional
 import numpy as np
 
 from src.environments.wrappers import FrozenHiddenObservation
+from src.buffers.replay_buffer import TimeIndexedReplayBuffer, BaseBuffer
 
 from .base_algorithm import BaseAlgorithm
 
@@ -51,11 +52,22 @@ def make_continual_learner(
 
             self.stationary_env = None
             self.last_obs = None
+            self.replay_buffers: list[TimeIndexedReplayBuffer] = []
+
+        @staticmethod
+        def _base_to_time_indexed_buffer(buffer: BaseBuffer, gamma: float = 1.0) -> TimeIndexedReplayBuffer:
+            return TimeIndexedReplayBuffer(
+                buffer.buffer_size,
+                buffer.observation_space,
+                buffer.action_space,
+                gamma,
+                device=buffer.device,
+                rng=buffer.rng,
+            )
 
         def predict(
             self,
             observation: np.ndarray,
-            sample: Optional[dict] = None,
             stationary_env: Optional[FrozenHiddenObservation] = None,
             learning: bool = True,
             log_interval: int = 1,
@@ -87,15 +99,19 @@ def make_continual_learner(
 
                 self.stationary_env = stationary_env
 
-                if sample is not None:
-                    # A transition has just occurred, add it to the replay buffer.
-                    self.replay_buffer.add(**sample)
-
                 # Perform a training step
                 if self.num_timesteps >= self.learning_starts and self.replay_buffer.size > 0:
                     losses = self.train(gradient_steps=self.gradient_steps, batch_size=self.batch_size)
                     self.loss_logger(losses, log_interval)
 
             return action
+
+        def add(self, sample: Optional[dict] = None):
+            if sample is not None:
+                # A transition has just occurred, add it to the replay buffer.
+                self.replay_buffer.add(**sample)
+                if sample["done"]:
+                    for buffer in self.replay_buffers:
+                        buffer.reset_from_env()
 
     return ContinualLearningAlgorithm

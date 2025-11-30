@@ -267,7 +267,7 @@ class TCM2TD3(BaseAlgorithm):
 
         new_obs, new_hidden_state, reward, terminated, truncated, infos = self.env.step(unscaled_action, hidden_action)
 
-        self.replay_buffer.add(obs, new_obs, scaled_action, reward, terminated, infos, hidden_state, new_hidden_state)
+        self.replay_buffer.add(obs, new_obs, scaled_action, reward, terminated, hidden_state, new_hidden_state)
 
         return new_obs, new_hidden_state, reward, terminated, truncated, infos
 

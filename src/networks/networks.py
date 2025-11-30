@@ -20,6 +20,8 @@ class Actor(nn.Module):
         The activation function to use, by default nn.ReLU.
     """
 
+    # TODO: add use of torchrl.modules.NoisyLinear instead of linear layer for all algorithms,
+    # during test time this is set to determinstic. See if this helps continual learning
     def __init__(
         self,
         observation_space: spaces.Box,

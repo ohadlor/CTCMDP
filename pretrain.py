@@ -8,7 +8,7 @@ from src.common.managment import set_torch_gpu
 
 
 # Training function to create pretrained networks for TD3, vanilla-TC-M2TD3, stacked-TC-M2TD3, oracle-TC-M2TD3
-@hydra.main(config_path="configs", config_name="local_config", version_base=None)
+@hydra.main(config_path="configs", config_name="local_pretrain_config", version_base=None)
 def main(cfg: DictConfig):
     """
     Main function for training the agent.
@@ -32,7 +32,7 @@ def main(cfg: DictConfig):
 
     print(f"Results will be saved to {output_dir}")
 
-    env = create_env(cfg, output_dir)
+    env = create_env(cfg)
 
     agent_params = {"seed": cfg.seed, "env": env, "tensorboard_log": output_dir}
     agent: BaseAlgorithm = hydra.utils.instantiate(cfg.agent.model, **agent_params, _convert_="all")
@@ -49,11 +49,13 @@ def main(cfg: DictConfig):
     print("Training finished. Saving model...")
     save_path = f"pretrained_models/{cfg.env.name}/"
     agent_name = ""
-    if "variant" in cfg.agent:
+    if cfg.agent.get("variant", None) is not None:
         agent_name += f"_{cfg.agent.variant}"
-    agent_name += f"_{cfg.agent.model._target_.split('.')[-1]}.pth"
+    agent_name += f"_{cfg.agent.model._target_.split('.')[-1]}"
     agent_name = agent_name[1:]
-    save_path += agent_name
+    if cfg.env.get("shrink_factor", 0) > 0:
+        agent_name += "_shrink"
+    save_path += agent_name + ".pth"
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     agent.save(save_path)
 

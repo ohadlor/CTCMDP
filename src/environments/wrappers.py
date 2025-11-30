@@ -6,7 +6,7 @@ from gymnasium import spaces
 import numpy as np
 from rrls._interface import ModifiedParamsEnv
 
-from .env_utils import bounds_to_space, remove_record_video_wrapper, find_attribute_in_stack, find_robust_env
+from .env_utils import bounds_to_space, find_attribute_in_stack, find_robust_env
 
 
 class TCRMDP(Wrapper):
@@ -27,10 +27,16 @@ class TCRMDP(Wrapper):
     """
 
     def __init__(
-        self, env: ModifiedParamsEnv, params_bound: dict[str, tuple[float, float]], radius: Optional[float] = None
+        self,
+        env: ModifiedParamsEnv,
+        params_bound: dict[str, tuple[float, float]],
+        radius: Optional[float] = None,
+        params_bound_shrink_factor: float = 0.0,
     ):
         super().__init__(env)
-        hidden_obs_space, hidden_action_space, self.hidden_params = bounds_to_space(params_bound, radius=radius)
+        hidden_obs_space, hidden_action_space, self.hidden_params = bounds_to_space(
+            params_bound, radius=radius, shrink_factor=params_bound_shrink_factor
+        )
 
         original_obs_space = self.observation_space
         original_action_space = self.action_space
@@ -174,7 +180,6 @@ class TCRMDP(Wrapper):
         new_env = copy.deepcopy(self)
 
         # Remove the recording wrapper if there is one
-        new_env = remove_record_video_wrapper(new_env)
         stationary_env = FrozenHiddenObservation(new_env)
         # Designed for mujoco envs
         position = self.unwrapped.data.qpos.flatten()
@@ -310,3 +315,15 @@ class FrozenHiddenObservation(Wrapper):
         obs, info = self.env.reset(seed=seed, options=options)
 
         return obs["observed"], info
+
+
+class BernoulliTruncation(Wrapper):
+    def __init__(self, env, p: float = 1e-3, seed: Optional[int] = None):
+        super().__init__(env)
+        self.rng = np.random.default_rng(seed)
+        self.p = p
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        truncated = bool(self.rng.binomial(1, self.p))
+        return obs, reward, terminated, truncated, info

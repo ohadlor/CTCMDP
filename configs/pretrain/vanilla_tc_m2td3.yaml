@@ -1,7 +1,0 @@
-# @package _global_
-defaults:
-  - /agent: vanilla_tc_m2td3
-  - _self_
-
-env:
-  name: halfcheetah

@@ -1,4 +1,4 @@
 model:
   _target_: src.agents.td3.TD3
-radius: null
+radius: null # Set for pretraining
 bootstrap: TD3
