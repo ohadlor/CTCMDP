@@ -2,7 +2,7 @@ defaults:
   - experiments: exp3
   - agent: pretrained_continual_td3/td3
   - schedule: brownian
-  - override hydra/launcher: joblib_tests
+  - override hydra/launcher: joblib
   - _self_
 
 master_seed: 2671232903
@@ -17,11 +17,13 @@ agent:
     learning_starts: 100
 
 num_gpus: 1 # Total physical GPUs available
-gpu_slot_size: 4 # Jobs per GPU
+gpu_slot_size: 2 # Jobs per GPU
 parallel_task: ${int_product:${num_gpus},${gpu_slot_size}}
 
 hydra:
   mode: MULTIRUN
+  launcher:
+    n_jobs: ${parallel_task}
   sweep:
     dir: outputs/${experiment_name}
     subdir: ${custom_dir:${agent},${env}}

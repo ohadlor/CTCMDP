@@ -2,7 +2,7 @@ defaults:
   - experiments: null
   - agent: pretrained_continual_td3/td3
   - schedule: brownian
-  - override hydra/launcher: submitit_custom
+  - override hydra/launcher: joblib
   - _self_
 
 master_seed: 2671232903
@@ -20,6 +20,8 @@ parallel_task: ${int_product:${num_gpus},${gpu_slot_size}}
 
 hydra:
   mode: MULTIRUN
+  launcher:
+    n_jobs: ${parallel_task}
   sweep:
     dir: outputs/${experiment_name}
     subdir: ${custom_dir:${agent},${env}}

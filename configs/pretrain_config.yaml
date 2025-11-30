@@ -1,7 +1,7 @@
 defaults:
   - pretrain: null
   - agent: td3
-  - override hydra/launcher: submitit_custom
+  - override hydra/launcher: joblib
   - _self_
 
 seed: 2671232903
@@ -13,6 +13,8 @@ parallel_task: ${int_product:${num_gpus},${gpu_slot_size}}
 
 hydra:
   mode: MULTIRUN
+  launcher:
+    n_jobs: ${parallel_task}
   sweep:
     dir: outputs/pretrain/${experiment_name}
     subdir: ${custom_dir:${agent},${env}}
