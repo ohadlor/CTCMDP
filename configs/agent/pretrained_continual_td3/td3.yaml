@@ -1,4 +1,5 @@
 model:
   _target_: src.agents.continual_td3.DiscountModelContinualTD3
   gamma: null
+  sim_discount_factor: 0.9
 bootstrap: TD3

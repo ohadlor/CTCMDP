@@ -24,7 +24,7 @@ hydra:
     n_jobs: ${parallel_task}
   sweep:
     dir: outputs/${experiment_name}
-    subdir: ${custom_dir:${agent},${env}}
+    subdir: ${custom_dir:${agent},${env},${schedule}}
   sweeper:
     params:
       +env.name: choice(ant, halfcheetah, humanoidstandup, walker2d) # Hopper is not used as the rrls implementation has some parameter issues

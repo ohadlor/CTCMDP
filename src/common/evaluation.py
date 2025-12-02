@@ -114,7 +114,6 @@ def evaluate_policy_hidden_state(
     total_timesteps: int = 1e5,
     # render: bool = False,
     # callback: Optional[Callable[[dict[str, Any], dict[str, Any]], None]] = None,
-    return_episode_rewards: bool = False,
     seeds: Optional[list[int]] = [],
 ):
     """
@@ -232,9 +231,5 @@ def evaluate_policy_hidden_state(
 
     all_rewards = np.array(all_rewards)
     time_avg_reward = all_rewards.mean(axis=1)
-    if return_episode_rewards:
-        return all_rewards
+    np.save(f"{model.tensorboard_log}/rewards.npy", all_rewards)
     return time_avg_reward.mean(), time_avg_reward.std()
-
-    total_reward = all_rewards.sum(axis=1)
-    return total_reward.mean(), total_reward.std()

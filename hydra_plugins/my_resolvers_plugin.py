@@ -1,11 +1,12 @@
 from datetime import datetime
+from typing import Optional
 
 import numpy as np
 from omegaconf import DictConfig, OmegaConf
 from coolname import generate_slug
 
 
-def custom_dir_resolver(agent_cfg: DictConfig, env_cfg: DictConfig):
+def custom_dir_resolver(agent_cfg: DictConfig, env_cfg: DictConfig, schedule_cfg: Optional[DictConfig] = None):
     """
     Generate a custom directory name for the run.
 
@@ -27,6 +28,14 @@ def custom_dir_resolver(agent_cfg: DictConfig, env_cfg: DictConfig):
     if "variant" in agent_cfg:
         run_name += f"_{agent_cfg.variant}"
     run_name += f"_{agent_cfg.model._target_.split('.')[-1]}"
+    if schedule_cfg is not None:
+        run_name += f"_{schedule_cfg._target_.split('.')[-1]}"
+    radius = agent_cfg.get("radius", None)
+    if radius is not None:
+        run_name += f"_radius-{radius}"
+    sim_discount = agent_cfg.model.get("sim_discount_factor", None)
+    if sim_discount is not None:
+        run_name += f"_simdiscount-{sim_discount}"
     shrink_factor = int(10 * agent_cfg.get("shrink_factor", 0))
     if shrink_factor or agent_cfg.get("boot_with_shrink_factor", False):
         run_name += "_shrink"
