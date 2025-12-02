@@ -15,8 +15,7 @@ agent:
   radius: 0.01
 
 num_gpus: 6 # Total physical GPUs available
-gpu_slot_size: 4 # Jobs per GPU
-parallel_task: ${int_product:${num_gpus},${gpu_slot_size}}
+parallel_task: 40
 
 hydra:
   mode: MULTIRUN

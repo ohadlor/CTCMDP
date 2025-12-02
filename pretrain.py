@@ -21,7 +21,7 @@ def main(cfg: DictConfig):
     hydra_cfg = HydraConfig.get()
     job_id = hydra_cfg.job.get("num", None)
     if job_id is not None:
-        set_torch_gpu(job_id, cfg.num_gpus, cfg.gpu_slot_size)
+        set_torch_gpu(job_id, cfg.num_gpus)
     # Imports in main to make multiprocessing easier, and after setting gpu
     from src.environments import create_env
     from src.agents.base_algorithm import BaseAlgorithm
