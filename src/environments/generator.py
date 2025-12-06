@@ -29,14 +29,16 @@ def create_env(cfg: DictConfig) -> gym.Env:
     env = gym.make(cfg.env.id)
     env_name = cfg.env.id.split("-")[0]
 
-    env = RobustWrapper(env)
     # If training not robust algorithm, return basic env
     if not cfg.get("test", False) and not is_robust:
+        env = RobustWrapper(env)
         if cfg.env.get("time_aware", False):
             env = TimeAwareObservation(env)
         return env
 
     param_bounds = get_param_bounds(env_name)
+    env = RobustWrapper(env, param_space=param_bounds, seed=cfg.master_seed)
+
     if cfg.get("test", False):
         # Truncation is sampled true with probability p
         env = BernoulliTruncation(env, seed=cfg.master_seed)

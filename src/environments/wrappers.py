@@ -47,8 +47,7 @@ class RobustWrapper(Wrapper):
 
         # For domain randomization
         self.param_space = param_space
-        if self.param_space:
-            self.np_random = np.random.default_rng(seed)
+        self.rng = np.random.default_rng(seed)
 
     def _get_name_to_index_map(self, mujoco_attribute: str) -> list[str]:
         """
@@ -168,14 +167,11 @@ class RobustWrapper(Wrapper):
 
         # Domain randomization
         if self.param_space:
-            if seed is not None:
-                self.np_random = np.random.default_rng(seed)
-
             new_params = {}
             for param, bounds in self.param_space.items():
                 if isinstance(bounds, (list, tuple)) and len(bounds) == 2:
                     low, high = bounds
-                    val = self.np_random.uniform(low, high)
+                    val = self.rng.uniform(low, high)
                     new_params[param] = val
 
             if options is None:

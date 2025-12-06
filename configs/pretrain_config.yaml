@@ -4,7 +4,7 @@ defaults:
   - override hydra/launcher: joblib
   - _self_
 
-seed: 2671232903
+master_seed: 2671232903
 total_timesteps: 1e6
 env:
   id: Ant-v5
