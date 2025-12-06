@@ -6,6 +6,8 @@ defaults:
 
 seed: 2671232903
 total_timesteps: 1e6
+env:
+  id: Ant-v5
 
 num_gpus: 6 # Total physical GPUs available
 parallel_task: 40
@@ -19,6 +21,5 @@ hydra:
     subdir: ${custom_dir:${agent},${env}}
   sweeper:
     params:
-      +env.name: choice(ant, halfcheetah, humanoidstandup, walker2d) # Hopper is not used as the rrls implementation has some parameter issues
-
+      env.id: choice(Ant-v5, HalfCheetah-v5, HumanoidStandup-v5, Walker2d-v5, Hopper-v5)
 # Experiments control for shrink_factor

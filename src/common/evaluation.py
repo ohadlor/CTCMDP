@@ -6,7 +6,7 @@ import numpy as np
 
 from src.agents.base_algorithm import BaseAlgorithm
 from src.schedules import BaseActionSchedule
-from src.environments import check_for_wrapper
+from src.environments.env_utils import check_for_wrapper
 from src.environments.wrappers import TCRMDP
 
 

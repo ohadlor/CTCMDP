@@ -32,6 +32,7 @@ def main(cfg: DictConfig):
 
     print(f"Results will be saved to {output_dir}")
 
+    env_name = cfg.env.id.split("-")[0]
     env = create_env(cfg)
 
     agent_params = {"seed": cfg.master_seed, "env": env, "tensorboard_log": output_dir}
@@ -45,8 +46,7 @@ def main(cfg: DictConfig):
     )
 
     setup_string = (
-        f"Starting evaluation of {cool_name},"
-        + f"\nEnv: {cfg.env.name}\nAgent: {cfg.agent.model._target_.split('.')[-1]}"
+        f"Starting evaluation of {cool_name}," + f"\nEnv: {env_name}\nAgent: {cfg.agent.model._target_.split('.')[-1]}"
     )
     if cfg.agent.bootstrap is not None:
         setup_string += f", bootstrapped from: {cfg.agent.bootstrap}"

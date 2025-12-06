@@ -1,5 +1,5 @@
 model:
   _target_: src.agents.tc_m2td3.TCM2TD3
 variant: oracle
-radius: 0.01 # Set for pretraining
+radius: 0.001 # Set for pretraining
 bootstrap: oracle_TCM2TD3

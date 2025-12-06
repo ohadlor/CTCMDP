@@ -32,14 +32,14 @@ def main(cfg: DictConfig):
 
     print(f"Results will be saved to {output_dir}")
 
+    env_name = cfg.env.id.split("-")[0]
     env = create_env(cfg)
 
     agent_params = {"seed": cfg.seed, "env": env, "tensorboard_log": output_dir}
     agent: BaseAlgorithm = hydra.utils.instantiate(cfg.agent.model, **agent_params, _convert_="all")
 
     setup_string = (
-        f"Starting training of {cool_name},"
-        + f"\nEnv: {cfg.env.name}\nAgent: {cfg.agent.model._target_.split('.')[-1]}"
+        f"Starting training of {cool_name}," + f"\nEnv: {env_name}\nAgent: {cfg.agent.model._target_.split('.')[-1]}"
     )
     if "variant" in cfg.agent:
         setup_string += f", variant: {cfg.agent.variant}"
@@ -47,7 +47,7 @@ def main(cfg: DictConfig):
     agent.learn(total_timesteps=int(cfg.total_timesteps), progress_bar=True)
 
     print("Training finished. Saving model...")
-    save_path = f"pretrained_models/{cfg.env.name}/"
+    save_path = f"pretrained_models/{env_name}/"
     agent_name = ""
     if cfg.agent.get("variant", None) is not None:
         agent_name += f"_{cfg.agent.variant}"

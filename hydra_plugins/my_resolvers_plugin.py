@@ -24,7 +24,7 @@ def custom_dir_resolver(agent_cfg: DictConfig, env_cfg: DictConfig, schedule_cfg
     """
     cool_name = generate_slug(2)
     timestamp = datetime.now().strftime("%Y%m%d")
-    run_name = f"{timestamp}_{cool_name}_{env_cfg.name}"
+    run_name = f"{timestamp}_{cool_name}_{env_cfg.id.split('-')[0]}"
     if "variant" in agent_cfg:
         run_name += f"_{agent_cfg.variant}"
     run_name += f"_{agent_cfg.model._target_.split('.')[-1]}"

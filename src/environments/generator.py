@@ -1,10 +1,9 @@
 from omegaconf import DictConfig
 import gymnasium as gym
 from gymnasium.wrappers import FrameStackObservation, TimeAwareObservation, FlattenObservation
-from rrls.wrappers import DomainRandomization
 
-from .env_utils import get_param_bounds, name_to_env_id
-from .wrappers import TCRMDP, SplitActionObservationSpace, BernoulliTruncation
+from .env_utils import get_param_bounds
+from .wrappers import TCRMDP, SplitActionObservationSpace, BernoulliTruncation, RobustWrapper
 
 
 def create_env(cfg: DictConfig) -> gym.Env:
@@ -25,16 +24,21 @@ def create_env(cfg: DictConfig) -> gym.Env:
     """
     # Define gym env
     radius = cfg.agent.get("radius", None)
-    is_rrls = False if radius is None else True
-    env_id = name_to_env_id(cfg.env.name, is_rrls)
+    is_robust = False if radius is None else True
 
-    env = gym.make(env_id)
-    # If test time add the following wrappers
-    param_bounds = get_param_bounds(cfg.env.name)
+    env = gym.make(cfg.env.id)
+    env_name = cfg.env.id.split("-")[0]
+
+    env = RobustWrapper(env)
+    # If training not robust algorithm, return basic env
+    if not cfg.get("test", False) and not is_robust:
+        if cfg.env.get("time_aware", False):
+            env = TimeAwareObservation(env)
+        return env
+
+    param_bounds = get_param_bounds(env_name)
     if cfg.get("test", False):
-        # Initial hidden states are randomized upon reset
-        env = DomainRandomization(env, params_bound=param_bounds)
-        # truncation is sampled true with probability p
+        # Truncation is sampled true with probability p
         env = BernoulliTruncation(env, seed=cfg.master_seed)
 
     if cfg.env.get("time_aware", False):
@@ -43,10 +47,7 @@ def create_env(cfg: DictConfig) -> gym.Env:
     if cfg.agent.get("variant", None) == "stacked":
         env = FlattenObservation(FrameStackObservation(env, stack_size=2))
 
-    # If robust or test time make into TCRMDP
-    if is_rrls or cfg.get("test", False):
-        # Create the augmented environment with hidden variable
-        shrink_factor = cfg.env.get("shrink_factor", 0)
-        env = SplitActionObservationSpace(TCRMDP(env, param_bounds, radius, shrink_factor))
+    shrink_factor = cfg.env.get("shrink_factor", 0)
+    env = SplitActionObservationSpace(TCRMDP(env, param_bounds, radius, shrink_factor))
 
     return env

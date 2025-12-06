@@ -1,18 +1,20 @@
 defaults:
-  - pretrain: pretrain1
-  - agent: td3
+  - pretrain: null
+  - agent: vanilla_tc_m2td3
   - override hydra/launcher: joblib
   - _self_
 
 seed: 2671232903
-total_timesteps: 500
-agent:
-  model:
-    learning_starts: 100
+total_timesteps: 1e6
+experiment_name: 0
+# agent:
+#   model:
+#     learning_starts: 1000
+env:
+  id: HalfCheetah-v5
 
 num_gpus: 1 # Total physical GPUs available
-gpu_slot_size: 2 # Jobs per GPU
-parallel_task: ${int_product:${num_gpus},${gpu_slot_size}}
+parallel_task: 1
 
 hydra:
   mode: MULTIRUN
@@ -23,4 +25,5 @@ hydra:
     subdir: ${custom_dir:${agent},${env}}
   sweeper:
     params:
-      +env.name: choice(ant, halfcheetah, humanoidstandup, walker2d) # Hopper is not used as the rrls implementation has some parameter issues
+      # env.id: choice(Ant-v5, HalfCheetah-v5, HumanoidStandup-v5, Walker2d-v5, Hopper-v5)
+      agent: choice(stacked_tc_m2td3, vanilla_tc_m2td3, oracle_tc_m2td3)

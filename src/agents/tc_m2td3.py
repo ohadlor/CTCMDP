@@ -4,14 +4,16 @@ from tqdm import tqdm
 import numpy as np
 import torch as th
 from gymnasium import Env
+from gymnasium.wrappers import FrameStackObservation
 from torch.nn import functional as F
 
 from src.buffers import HiddenReplayBuffer
 from src.common.utils import polyak_update
-
-from .base_algorithm import BaseAlgorithm
 from src.common.noise import NormalActionNoise
 from src.policies.m2td3_policy import M2TD3Policy
+from src.environments.env_utils import check_for_wrapper
+
+from .base_algorithm import BaseAlgorithm
 
 
 class TCM2TD3(BaseAlgorithm):
@@ -42,6 +44,7 @@ class TCM2TD3(BaseAlgorithm):
         self,
         env: Env,
         lr: float = 3e-4,
+        adversary_lr: float = 3e-4,
         buffer_size: int = 1_000_000,
         learning_starts: int = 10_000,
         batch_size: int = 256,
@@ -49,6 +52,7 @@ class TCM2TD3(BaseAlgorithm):
         tau: float = 0.005,
         gradient_steps: int = 1,
         action_noise_std: float = 0.1,
+        adversary_noise_std: float = 0.1,
         policy_delay: int = 2,
         target_policy_noise: float = 0.2,
         target_noise_clip: float = 0.5,
@@ -82,7 +86,10 @@ class TCM2TD3(BaseAlgorithm):
         self.gradient_steps = gradient_steps
         self.action_noise = NormalActionNoise(mean=0, std=action_noise_std, rng=self.rng)
         self.learning_starts = learning_starts
+        self.adversary_lr = adversary_lr
+        self.adversary_noise_factor = adversary_noise_std / action_noise_std
 
+        self.is_stacked = check_for_wrapper(self.env, FrameStackObservation)
         self._setup_model()
         self._make_aliases()
 
@@ -98,7 +105,9 @@ class TCM2TD3(BaseAlgorithm):
             self.hidden_observation_space,
             self.hidden_action_space,
             self.lr,
+            self.adversary_lr,
             oracle_actor=self.oracle_actor,
+            stacked_observation=self.is_stacked,
             device=self.device,
         )
 
@@ -112,6 +121,13 @@ class TCM2TD3(BaseAlgorithm):
         self.actor_optimizer = self.policy.actor_optimizer
         self.adversary_optimizer = self.policy.adversary_optimizer
         self.critic_optimizer = self.policy.critic_optimizer
+
+    @staticmethod
+    def log_gradients(model, writer, step, name):
+        """Log the gradients of a model to tensorboard."""
+        for tag, value in model.named_parameters():
+            if value.grad is not None:
+                writer.add_scalar(f"gradients/{name}/{tag}", value.grad.norm(), step)
 
     def train(self, gradient_steps: int, batch_size: int) -> tuple[float, Optional[float], Optional[float]]:
         """
@@ -157,6 +173,8 @@ class TCM2TD3(BaseAlgorithm):
 
             self.critic_optimizer.zero_grad()
             critic_loss.backward()
+            if self.logger:
+                self.log_gradients(self.critic, self.logger, self._n_updates, "critic")
             self.critic_optimizer.step()
 
             if self._n_updates % self.policy_delay == 0:
@@ -169,6 +187,8 @@ class TCM2TD3(BaseAlgorithm):
 
                 self.actor_optimizer.zero_grad()
                 agent_loss.backward()
+                if self.logger:
+                    self.log_gradients(self.actor, self.logger, self._n_updates, "actor")
                 self.actor_optimizer.step()
 
                 # Train adversary
@@ -183,6 +203,8 @@ class TCM2TD3(BaseAlgorithm):
 
                 self.adversary_optimizer.zero_grad()
                 adversary_loss.backward()
+                if self.logger:
+                    self.log_gradients(self.adversary, self.logger, self._n_updates, "adversary")
                 self.adversary_optimizer.step()
 
                 polyak_update(self.actor.parameters(), self.actor_target.parameters(), self.tau)
@@ -240,7 +262,11 @@ class TCM2TD3(BaseAlgorithm):
 
         # Add noise to the action (improve exploration)
         if self.action_noise is not None:
-            scaled_hidden_action = np.clip(scaled_hidden_action + self.action_noise(scaled_hidden_action.size), -1, 1)
+            scaled_hidden_action = np.clip(
+                scaled_hidden_action + self.adversary_noise_factor * self.action_noise(scaled_hidden_action.size),
+                -1,
+                1,
+            )
         hidden_action = self.policy.unscale_hidden_action(scaled_hidden_action)
 
         return hidden_action
@@ -323,6 +349,8 @@ class TCM2TD3(BaseAlgorithm):
                     if actor_loss is not None:
                         self.logger.add_scalar("loss/actor_loss", actor_loss, self._n_updates)
                         self.logger.add_scalar("loss/adversary_loss", adversary_loss, self._n_updates)
+                # Track first hidden state to see trajectory
+                self.logger.add_scalar("hidden_state/1", hidden_state[0], num_timesteps)
 
             # Handle episode termination
             if done:
@@ -333,6 +361,20 @@ class TCM2TD3(BaseAlgorithm):
                     self.logger.add_scalar("rollout/ep_len_mean", ep_len, num_timesteps)
                 ep_rewards = []
                 ep_len = 0
+
+            if num_timesteps % 3e3 == 0:
+                if self.logger:
+                    # Estimate the adversary entropy/ variance
+                    buffer_samples = self.replay_buffer.sample(2000)
+                    adversary_obs = self.policy.concat_obs_adversary(
+                        buffer_samples.observations, buffer_samples.hidden_states, buffer_samples.actions
+                    )
+                    adv_actions = self.policy.predict_hidden_action(adversary_obs)
+                    adv_entropy = adv_actions.std(axis=0)
+                    index = np.argmin(adv_entropy)
+                    adv_mean = adv_actions.mean(axis=0)
+                    self.logger.add_scalar("entropy/adversary_std", adv_entropy.min(), num_timesteps)
+                    self.logger.add_scalar("entropy/adversary_mean", adv_mean[index], num_timesteps)
 
             # Log progress
             if not progress_bar and log_interval is not None and num_timesteps % log_interval == 0:

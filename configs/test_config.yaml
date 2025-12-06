@@ -13,6 +13,8 @@ total_timesteps: 1e5
 boot_with_shrink_factor: false
 agent:
   radius: 0.01
+env:
+  id: Ant-v5
 
 num_gpus: 6 # Total physical GPUs available
 parallel_task: 40
@@ -26,6 +28,5 @@ hydra:
     subdir: ${custom_dir:${agent},${env},${schedule}}
   sweeper:
     params:
-      +env.name: choice(ant, halfcheetah, humanoidstandup, walker2d) # Hopper is not used as the rrls implementation has some parameter issues
-
+      env.id: choice(Ant-v5, HalfCheetah-v5, HumanoidStandup-v5, Walker2d-v5, Hopper-v5)
 # Experiments control for schedules, radius vs discount factor, bootstrap with shrink factor

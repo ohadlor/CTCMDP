@@ -46,17 +46,20 @@ class M2TD3Policy:
         action_space: spaces.Box,
         hidden_state_space: spaces.Box,
         hidden_action_space: spaces.Box,
-        lr: int,
+        lr: float,
+        adversary_lr: float,
         net_arch=[400, 300],
-        activation_fn=nn.ReLU,
-        n_critics=2,
-        oracle_actor=False,
+        activation_fn: nn.Module = nn.ReLU,
+        n_critics: int = 2,
+        oracle_actor: bool = False,
+        stacked_observation: bool = False,
         device="auto",
         optimizer_class=th.optim.Adam,
         optimizer_kwargs=None,
     ):
         self.device = device
         self.oracle_actor = oracle_actor
+        self.is_stacked = stacked_observation
 
         # Spaces
         self.observation_space = observation_space
@@ -77,15 +80,25 @@ class M2TD3Policy:
         else:
             actor_obs_space = self.observation_space
 
+        if self.is_stacked:
+            self.base_obs_size = int(self.observation_space.shape[-1] / 2)
+            base_obs_space = gym.spaces.Box(
+                low=self.observation_space.low[: self.base_obs_size],
+                high=self.observation_space.high[: self.base_obs_size],
+                dtype=np.float64,
+            )
+        else:
+            base_obs_space = self.observation_space
+
         critic_obs_space = gym.spaces.Box(
-            low=np.concatenate([self.observation_space.low, self.hidden_state_space.low]),
-            high=np.concatenate([self.observation_space.high, self.hidden_state_space.high]),
+            low=np.concatenate([base_obs_space.low, self.hidden_state_space.low]),
+            high=np.concatenate([base_obs_space.high, self.hidden_state_space.high]),
             dtype=np.float64,
         )
 
         adversary_obs_space = gym.spaces.Box(
-            low=np.concatenate([self.observation_space.low, self.hidden_state_space.low, self.action_space.low]),
-            high=np.concatenate([self.observation_space.high, self.hidden_state_space.high, self.action_space.high]),
+            low=np.concatenate([base_obs_space.low, self.hidden_state_space.low, self.action_space.low]),
+            high=np.concatenate([base_obs_space.high, self.hidden_state_space.high, self.action_space.high]),
             dtype=np.float64,
         )
 
@@ -114,7 +127,11 @@ class M2TD3Policy:
         self.adversary = self.make_adversary()
 
         self.create_targets()
-        self.create_optimizers(lr, optimizer_class, optimizer_kwargs)
+        self.actor_optimizer = self.create_optimizers(self.actor.parameters(), lr, optimizer_class, optimizer_kwargs)
+        self.critic_optimizer = self.create_optimizers(self.critic.parameters(), lr, optimizer_class, optimizer_kwargs)
+        self.adversary_optimizer = self.create_optimizers(
+            self.adversary.parameters(), adversary_lr, optimizer_class, optimizer_kwargs
+        )
 
     def create_targets(self):
         self.actor_target = self.make_actor()
@@ -124,11 +141,9 @@ class M2TD3Policy:
         self.adversary_target = self.make_adversary()
         self.adversary_target.load_state_dict(self.adversary.state_dict())
 
-    def create_optimizers(self, lr, optimizer_class=th.optim.Adam, optimizer_kwargs=None):
+    def create_optimizers(self, parameters, lr, optimizer_class=th.optim.Adam, optimizer_kwargs=None):
         optimizer_kwargs = optimizer_kwargs or {}
-        self.actor_optimizer = optimizer_class(self.actor.parameters(), lr=lr, **optimizer_kwargs)
-        self.critic_optimizer = optimizer_class(self.critic.parameters(), lr=lr, **optimizer_kwargs)
-        self.adversary_optimizer = optimizer_class(self.adversary.parameters(), lr=lr, **optimizer_kwargs)
+        return optimizer_class(parameters, lr=lr, **optimizer_kwargs)
 
     def set_training_mode(self, mode: bool):
         self.actor.train(mode)
@@ -233,7 +248,9 @@ class M2TD3Policy:
         """
         if np.array_equal(self.action_space.high, self.action_space.low):
             return np.zeros_like(action)
-        return (action - self.action_space.low) / (self.action_space.high - self.action_space.low) * 2 - 1
+        scaled_action = (action - self.action_space.low) / (self.action_space.high - self.action_space.low) * 2 - 1
+        self.assert_scaled(scaled_action)
+        return scaled_action
 
     def unscale_hidden_action(
         self, squashed_hidden_action: Union[np.ndarray, th.Tensor]
@@ -278,9 +295,11 @@ class M2TD3Policy:
         """
         if np.array_equal(self.hidden_action_space.high, self.hidden_action_space.low):
             return np.zeros_like(hidden_action)
-        return (hidden_action - self.hidden_action_space.low) / (
+        scaled_hidden_action = (hidden_action - self.hidden_action_space.low) / (
             self.hidden_action_space.high - self.hidden_action_space.low
         ) * 2 - 1
+        self.assert_scaled(scaled_hidden_action)
+        return scaled_hidden_action
 
     def concat_obs_actor(
         self, observation: Union[th.Tensor, np.ndarray], hidden_state: Optional[Union[th.Tensor, np.ndarray]] = None
@@ -327,11 +346,15 @@ class M2TD3Policy:
         Union[th.Tensor, np.ndarray]
             The concatenated observation.
         """
-        assert type(observation) is type(hidden_state)
-        if isinstance(observation, np.ndarray):
-            return np.concatenate([observation, hidden_state], axis=-1)
+        if self.is_stacked:
+            current_obs = observation[..., self.base_obs_size :]
         else:
-            return th.cat([observation, hidden_state], dim=1)
+            current_obs = observation
+
+        if isinstance(observation, np.ndarray):
+            return np.concatenate([current_obs, hidden_state], axis=-1)
+        else:
+            return th.cat([current_obs, hidden_state], dim=1)
 
     def concat_obs_adversary(
         self,
@@ -356,13 +379,21 @@ class M2TD3Policy:
         Union[th.Tensor, np.ndarray]
             The concatenated observation.
         """
-        assert type(observation) is type(hidden_state) and type(observation) is type(action)
-        if isinstance(observation, np.ndarray):
-            return np.concatenate([observation, hidden_state, action], axis=-1)
+        if self.is_stacked:
+            current_obs = observation[..., self.base_obs_size :]
         else:
-            return th.cat([observation, hidden_state, action], dim=1)
+            current_obs = observation
+
+        if isinstance(observation, np.ndarray):
+            return np.concatenate([current_obs, hidden_state, action], axis=-1)
+        else:
+            return th.cat([current_obs, hidden_state, action], dim=1)
 
     def load_actor(self, path: str):
         weights = th.load(path, map_location=self.device, weights_only=True)
         self.actor.load_state_dict(weights["actor"])
         self.actor_target.load_state_dict(weights["actor"])
+
+    @staticmethod
+    def assert_scaled(action: np.ndarray):
+        assert np.all(action >= -1) and np.all(action <= 1), "Action must be scaled to [-1, 1]"

@@ -1,61 +1,56 @@
-import importlib
 import numpy as np
-
 import gymnasium as gym
 from gymnasium import spaces
 
-# Mapping of rrls registered env name to (rrls.env_module, param_class_name)
-env_mapping = {
-    "ant": ("ant", "Ant"),
-    "halfcheetah": ("half_cheetah", "HalfCheetah"),
-    "hopper": ("hopper", "Hopper"),
-    "walker2d": ("walker", "Walker2d"),
-    "humanoidstandup": ("humanoid", "HumanoidStandup"),
+# --- Robust Uncertainty Sets ---
+# Standard uncertainty sets for perturbations (Mass, Friction, Damping)
+# Values represent absolute ranges [min, max] based on standard MuJoCo XML defaults.
+# These are aligned with common Robust RL benchmarks (e.g., RARL, M2TD3).
+
+PARAMETER_SPACE = {
+    "Ant": {
+        "torso_mass": ([0.1, 3.0], 0.33),
+        "front_left_leg_mass": ([0.01, 3.0], 0.04),
+        "front_right_leg_mass": ([0.01, 3.0], 0.06),
+    },
+    "HalfCheetah": {
+        "world_friction": ([0.1, 4.0], 0.4),
+        "torso_mass": ([0.1, 7.0], 6.36),
+        "bthigh_mass": ([0.1, 3.0], 1.53),
+    },
+    "Hopper": {
+        "world_friction": ([0.1, 3.0], 1.00),
+        "torso_mass": ([0.1, 3.0], 3.53),
+        "thigh_mass": ([0.1, 4.0], 3.93),
+    },
+    "HumanoidStandup": {
+        "torso_mass": ([0.1, 16.0], 8.32),
+        "right_foot_mass": ([0.1, 5.0], 1.77),
+        "left_thigh_mass": ([0.1, 8.0], 4.53),
+    },
+    "Walker2d": {
+        "world_friction": ([0.1, 4.0], 0.7),
+        "torso_mass": ([0.1, 5.0], 3.53),
+        "thigh_mass": ([0.1, 6.0], 3.93),
+    },
 }
 
 
-def get_param_bounds(env_name: str, bound_dim_name: str = "THREE_DIM"):
+def get_param_bounds(env_name: str) -> dict[str, tuple[float, float]]:
+
+    full_set = PARAMETER_SPACE.get(env_name, {})
+    uncertainty_set = {param: bounds[0] for param, bounds in full_set.items()}
+    return uncertainty_set
+
+
+def get_param_defaults(env_name: str) -> dict[str, float]:
     """
-    Gets the parameter bounds dictionary from the gym id string and a dimension name.
-    For example, for "rrls/robust-ant-v0" and "THREE_DIM", it returns the corresponding bounds dictionary.
-
-    Parameters
-    ----------
-    env_name : str
-        The name of the environment.
-    bound_dim_name : str, optional
-        The name of the bound dimension, by default "THREE_DIM".
-
-    Returns
-    -------
-    dict
-        The parameter bounds dictionary.
+    Gets the parameter bounds dictionary from the gym
+    id string and a dimension name.
     """
-
-    module_name, class_name_base = env_mapping[env_name]
-    class_name = f"{class_name_base}ParamsBound"
-
-    # Dynamically import the class
-    try:
-        module_name = f"rrls.envs.{module_name}"
-        module = importlib.import_module(module_name)
-        param_class = getattr(module, class_name)
-    except (ImportError, AttributeError) as e:
-        raise ImportError(
-            f"Could not import '{class_name}' from '{module_name}'. "
-            "Please check if the rrls library is installed correctly and the naming convention is as expected."
-            f"Error: {e}"
-        )
-
-    # Now, get the specific bounds from the enum class
-    try:
-        bounds_enum_member = getattr(param_class, bound_dim_name)
-        return bounds_enum_member.value
-    except AttributeError:
-        raise AttributeError(
-            f"'{bound_dim_name}' is not a valid dimension in {class_name}. "
-            f"Available dimensions are: {[member.name for member in param_class]}"
-        )
+    full_set = PARAMETER_SPACE.get(env_name, {})
+    defaults = {param: bounds[1] for param, bounds in full_set.items()}
+    return defaults
 
 
 def bounds_to_space(
@@ -139,16 +134,16 @@ def find_attribute_in_stack(start_env, attribute_name: str):
     raise AttributeError(f"Attribute or method '{attribute_name}' not found anywhere below the starting environment.")
 
 
-def check_for_wrapper(env, wrapper_class):
+def check_for_wrapper(env: gym.Env, wrapper_class: type) -> bool:
     """
-    Checks if a specific wrapper class is applied to a Gymnasium environment.
+    Checks if a wrapper of a specific class exists in the environment stack.
 
     Parameters
     ----------
-    env : gymnasium.Env
-        The Gymnasium environment instance.
+    env : gym.Env
+        The environment to check.
     wrapper_class : type
-        The class of the wrapper to check for (e.g., gym.wrappers.ClipAction).
+        The wrapper class to look for.
 
     Returns
     -------
@@ -156,56 +151,8 @@ def check_for_wrapper(env, wrapper_class):
         True if the wrapper is found, False otherwise.
     """
     current_env = env
-    while True:
+    while isinstance(current_env, gym.Wrapper):
         if isinstance(current_env, wrapper_class):
             return True
-        # Check if the current environment has a 'env' attribute (meaning it's a Wrapper)
-        if hasattr(current_env, "env"):
-            current_env = current_env.env
-        else:
-            # Reached the base environment, wrapper not found
-            return False
-
-
-def name_to_env_id(name: str, is_rrls: bool = True) -> str:
-    """
-    Convert a name to a Gymnasium environment ID.
-
-    Parameters
-    ----------
-    name : str
-        The name of the environment.
-    is_rrls : bool, optional
-        Whether the environment is an rrls environment, by default True.
-
-    Returns
-    -------
-    str
-        The Gymnasium environment ID.
-    """
-    vanilla_map = {
-        "ant": "Ant-v5",
-        "halfcheetah": "HalfCheetah-v5",
-        "hopper": "Hopper-v5",
-        "walker2d": "Walker2d-v5",
-        "humanoidstandup": "HumanoidStandup-v5",
-    }
-    robust_map = {
-        "ant": "rrls/robust-ant-v0",
-        "halfcheetah": "rrls/robust-halfcheetah-v0",
-        "hopper": "rrls/robust-hopper-v0",
-        "walker2d": "rrls/robust-walker-v0",
-        "humanoidstandup": "rrls/robust-humanoidstandup-v0",
-    }
-    if is_rrls:
-        return robust_map[name]
-    else:
-        return vanilla_map[name]
-
-
-def find_robust_env(env: gym.Env) -> gym.Env:
-    current_env = env
-    while hasattr(current_env, "env"):
-        if "Robust" in current_env.__class__.__name__:
-            return current_env
         current_env = current_env.env
+    return False
