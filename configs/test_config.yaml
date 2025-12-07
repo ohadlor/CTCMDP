@@ -9,7 +9,7 @@ master_seed: 2671232903
 seeds: ${seed_sequence:${iterations},${master_seed}}
 iterations: 10
 test: true
-total_timesteps: 2e5
+total_timesteps: 20_000
 boot_with_shrink_factor: false
 agent:
   radius: 0.01
