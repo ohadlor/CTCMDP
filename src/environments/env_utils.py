@@ -96,7 +96,7 @@ def bounds_to_space(
     return obs_space, action_space, params
 
 
-def find_attribute_in_stack(start_env, attribute_name: str):
+def find_attribute_in_stack(start_env, attribute_name: str, default_value=None):
     """
     Searches down the wrapper stack starting from start_env for the attribute_name.
 
@@ -131,7 +131,7 @@ def find_attribute_in_stack(start_env, attribute_name: str):
         else:
             break
 
-    raise AttributeError(f"Attribute or method '{attribute_name}' not found anywhere below the starting environment.")
+    return default_value
 
 
 def check_for_wrapper(env: gym.Env, wrapper_class: type) -> bool:

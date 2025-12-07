@@ -17,7 +17,7 @@ env:
   id: Ant-v5
 
 num_gpus: 6 # Total physical GPUs available
-parallel_task: 40
+parallel_task: 20
 
 hydra:
   mode: MULTIRUN

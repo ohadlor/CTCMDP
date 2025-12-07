@@ -75,6 +75,14 @@ class BaseBuffer:
             self.full = True
             self.pos = 0
 
+    def reset(self, seed: Optional[int] = None):
+        """
+        Clear the replay buffer.
+        """
+        self.pos = 0
+        self.full = False
+        self.rng = np.random.default_rng(seed)
+
     def sample(self, batch_size: int) -> BaseReplayBufferSamples:
         """
         Sample a batch of transitions from the replay buffer.
@@ -180,7 +188,7 @@ class TimeIndexedReplayBuffer(BaseBuffer):
         :return: A batch of samples.
         """
         upper_bound = self.buffer_size if self.full else self.pos
-        time_factor = self.time_indices.max() - self.time_indices[:upper_bound]
+        time_factor = self.time_indices[:upper_bound].max() - self.time_indices[:upper_bound]
         weights = self.gamma**time_factor
         weights /= weights.sum()
         batch_inds = self.rng.choice(upper_bound, size=batch_size, p=weights.flatten())

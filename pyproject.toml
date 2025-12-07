@@ -12,15 +12,14 @@ dependencies = [
     "hydra-core",
     "numpy",
     "coolname",
-    # "rich",
     "tqdm",
     "tensorboard",
     "torch-tb-profiler>=0.2.0",
     "gymnasium[mujoco]>=1.1.1",
     "imageio",
     "torch",
-    # "torchrl",
     "hydra-joblib-launcher",
+    "joblib",
 ]
 
 

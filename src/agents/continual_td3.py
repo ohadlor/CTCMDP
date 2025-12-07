@@ -51,6 +51,10 @@ class DiscountModelContinualTD3(ContinualTD3):
     ):
 
         super().__init__(*args, **kwargs)
+        # For copy
+        self.args = args
+        self.kwargs = kwargs
+
         if self.gamma is None:
             self.gamma = sim_gamma
         self.replay_buffer = self._base_to_time_indexed_buffer(
@@ -59,6 +63,8 @@ class DiscountModelContinualTD3(ContinualTD3):
         )
         self.replay_buffers = [self.replay_buffer]
 
+        self.actor_path = actor_path
+        self.critic_path = critic_path
         if actor_path is not None:
             self._load_actor(actor_path)
         if critic_path is not None:
@@ -198,3 +204,13 @@ class DiscountModelContinualTD3(ContinualTD3):
     def _load_critic(self, path: str) -> None:
 
         self.policy.load_critic(path)
+
+    def reset(self, seed: Optional[int] = None):
+        self.set_seed(seed)
+        for buffer in self.replay_buffers:
+            buffer.reset(seed)
+        self.policy.reset()
+        if self.actor_path is not None:
+            self._load_actor(self.actor_path)
+        if self.critic_path is not None:
+            self._load_critic(self.critic_path)

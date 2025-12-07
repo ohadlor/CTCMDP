@@ -1,4 +1,5 @@
 from typing import Optional
+from abc import abstractmethod, ABC
 
 import numpy as np
 
@@ -29,7 +30,7 @@ def make_continual_learner(
         A continual learning algorithm.
     """
 
-    class ContinualLearningAlgorithm(base_algorithm):
+    class ContinualLearningAlgorithm(base_algorithm, ABC):
         """
         A continual learning algorithm. This is a wrapper around a base algorithm that
         adds the ability to learn continually from a stream of data.
@@ -46,6 +47,9 @@ def make_continual_learner(
 
         def __init__(self, gradient_steps: int = gradient_steps, batch_size: int = batch_size, *args, **kwargs):
             super().__init__(*args, **kwargs)
+            self.args = args
+            self.kwargs = kwargs
+
             self.num_timesteps = 0
             self.gradient_steps = gradient_steps
             self.batch_size = batch_size
@@ -113,5 +117,11 @@ def make_continual_learner(
                 if sample["done"]:
                     for buffer in self.replay_buffers:
                         buffer.reset_from_env()
+
+        @abstractmethod
+        def reset(self, seed: Optional[int] = None) -> None:
+            for buffer in self.replay_buffers:
+                buffer.reset(seed)
+            # Reset policy
 
     return ContinualLearningAlgorithm

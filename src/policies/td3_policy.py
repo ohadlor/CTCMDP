@@ -52,6 +52,11 @@ class TD3Policy:
         self.observation_space = observation_space
         self.action_space = action_space
 
+        # Optimizer
+        self.lr = lr
+        self.optimizer_class = optimizer_class
+        self.optimizer_kwargs = optimizer_kwargs or {}
+
         # Networks
         self.actor_kwargs = {
             "observation_space": self.observation_space,
@@ -65,6 +70,9 @@ class TD3Policy:
             "net_arch": net_arch,
             "n_critics": n_critics,
         }
+        self.reset()
+
+    def reset(self):
         self.actor = self.make_actor()
         self.actor_target = self.make_actor()
         self.actor_target.load_state_dict(self.actor.state_dict())
@@ -74,9 +82,8 @@ class TD3Policy:
         self.critic_target.load_state_dict(self.critic.state_dict())
 
         # Optimizers
-        optimizer_kwargs = optimizer_kwargs or {}
-        self.actor_optimizer = optimizer_class(self.actor.parameters(), lr=lr, **optimizer_kwargs)
-        self.critic_optimizer = optimizer_class(self.critic.parameters(), lr=lr, **optimizer_kwargs)
+        self.actor_optimizer = self.optimizer_class(self.actor.parameters(), lr=self.lr, **self.optimizer_kwargs)
+        self.critic_optimizer = self.optimizer_class(self.critic.parameters(), lr=self.lr, **self.optimizer_kwargs)
 
     def set_training_mode(self, mode: bool):
         self.actor.train(mode)

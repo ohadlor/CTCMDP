@@ -4,14 +4,13 @@ from tqdm import tqdm
 import numpy as np
 import torch as th
 from gymnasium import Env
-from gymnasium.wrappers import FrameStackObservation
 from torch.nn import functional as F
 
 from src.buffers import HiddenReplayBuffer
 from src.common.utils import polyak_update
 from src.common.noise import NormalActionNoise
 from src.policies.m2td3_policy import M2TD3Policy
-from src.environments.env_utils import check_for_wrapper
+from src.environments.env_utils import find_attribute_in_stack
 
 from .base_algorithm import BaseAlgorithm
 
@@ -89,7 +88,8 @@ class TCM2TD3(BaseAlgorithm):
         self.adversary_lr = adversary_lr
         self.adversary_noise_factor = adversary_noise_std / action_noise_std
 
-        self.is_stacked = check_for_wrapper(self.env, FrameStackObservation)
+        # Implementation currently only supports stack size of 2
+        self.is_stacked = find_attribute_in_stack(self.env, "num_stack", 1) == 2
         self._setup_model()
         self._make_aliases()
 
@@ -350,7 +350,7 @@ class TCM2TD3(BaseAlgorithm):
                         self.logger.add_scalar("loss/actor_loss", actor_loss, self._n_updates)
                         self.logger.add_scalar("loss/adversary_loss", adversary_loss, self._n_updates)
                 # Track first hidden state to see trajectory
-                self.logger.add_scalar("hidden_state/1", hidden_state[0], num_timesteps)
+                # self.logger.add_scalar("hidden_state/1", hidden_state[0], num_timesteps)
 
             # Handle episode termination
             if done:
@@ -362,23 +362,9 @@ class TCM2TD3(BaseAlgorithm):
                 ep_rewards = []
                 ep_len = 0
 
-            if num_timesteps % 3e3 == 0:
-                if self.logger:
-                    # Estimate the adversary entropy/ variance
-                    buffer_samples = self.replay_buffer.sample(2000)
-                    adversary_obs = self.policy.concat_obs_adversary(
-                        buffer_samples.observations, buffer_samples.hidden_states, buffer_samples.actions
-                    )
-                    adv_actions = self.policy.predict_hidden_action(adversary_obs)
-                    adv_entropy = adv_actions.std(axis=0)
-                    index = np.argmin(adv_entropy)
-                    adv_mean = adv_actions.mean(axis=0)
-                    self.logger.add_scalar("entropy/adversary_std", adv_entropy.min(), num_timesteps)
-                    self.logger.add_scalar("entropy/adversary_mean", adv_mean[index], num_timesteps)
-
-            # Log progress
-            if not progress_bar and log_interval is not None and num_timesteps % log_interval == 0:
-                print(f"Timestep: {num_timesteps}/{total_timesteps}")
+            # Checkpoint agent every 1e6 steps
+            if num_timesteps % 1e6 == 0:
+                self.save(self.logger.get_logdir() + "/model.pth")
 
         if progress_bar:
             pbar.close()
