@@ -16,7 +16,6 @@ def evaluate_policy(
     n_eval_episodes: int = 10,
     render: bool = False,
     callback: Optional[Callable[[dict[str, Any], dict[str, Any]], None]] = None,
-    return_episode_rewards: bool = False,
     average_reward: bool = False,
     seed: Optional[int] = None,
 ) -> np.ndarray:
@@ -68,10 +67,10 @@ def evaluate_policy(
         env = env.copy_to_stationary_env()
         hidden_state = env.hidden_state
 
-    for _ in range(n_eval_episodes):
+    for i in range(n_eval_episodes):
         episode_rewards = []
         done = False
-        observations, _ = env.reset(seed=seed)
+        observations, _ = env.reset(seed=seed + i)
         current_step = 0
 
         while not done:
@@ -95,13 +94,12 @@ def evaluate_policy(
     padded_rewards = np.nan * np.ones((len(all_rewards), max_len))
     for i, ep in enumerate(all_rewards):
         padded_rewards[i, : len(ep)] = ep
+    np.save(f"{model.tensorboard_log}/rewards.npy", padded_rewards)
 
     if average_reward:
         avg_reward = np.nanmean(padded_rewards, axis=1)
         std_reward = np.nanstd(avg_reward)
         return avg_reward.mean(), std_reward
-    elif return_episode_rewards:
-        return padded_rewards
 
     total_reward = np.nansum(padded_rewards, axis=1)
     return total_reward.mean(), total_reward.std()

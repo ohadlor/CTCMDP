@@ -6,4 +6,4 @@ hydra:
   sweeper:
     params:
       agent.radius: ${logspace:0.0001,0.5,20}
-      ++agent.model.sim_discount_factor: ${linspace:0,1,20}
+      ++agent.model.sim_gamma: ${linspace:0,1,20}

@@ -5,7 +5,7 @@ defaults:
   - _self_
 
 master_seed: 2671232903
-total_timesteps: 1e6
+total_timesteps: 2e6
 env:
   id: Ant-v5
 

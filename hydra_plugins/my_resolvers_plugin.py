@@ -33,9 +33,9 @@ def custom_dir_resolver(agent_cfg: DictConfig, env_cfg: DictConfig, schedule_cfg
     radius = agent_cfg.get("radius", None)
     if radius is not None:
         run_name += f"_radius-{radius}"
-    sim_discount = agent_cfg.model.get("sim_discount_factor", None)
-    if sim_discount is not None:
-        run_name += f"_simdiscount-{sim_discount}"
+    sim_gamma = agent_cfg.model.get("sim_gamma", None)
+    if sim_gamma is not None:
+        run_name += f"_simdiscount-{sim_gamma}"
     shrink_factor = int(10 * agent_cfg.get("shrink_factor", 0))
     if shrink_factor or agent_cfg.get("boot_with_shrink_factor", False):
         run_name += "_shrink"

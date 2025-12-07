@@ -37,7 +37,7 @@ def parse_dir_name(dir_name: str) -> dict[str, Any]:
             'model': 'TD3',
             'schedule': 'ContinualSchedule',
             'radius': 0.5,
-            'sim_discount': 0.99,
+            'sim_gamma': 0.99,
             'shrink': True
         }
     """
@@ -62,9 +62,9 @@ def parse_dir_name(dir_name: str) -> dict[str, Any]:
                 params["radius"] = part.split("-", 1)[1]
         elif part.startswith("simdiscount-"):
             try:
-                params["sim_discount"] = float(part.split("-", 1)[1])
+                params["sim_gamma"] = float(part.split("-", 1)[1])
             except (ValueError, IndexError):
-                params["sim_discount"] = part.split("-", 1)[1]
+                params["sim_gamma"] = part.split("-", 1)[1]
         elif part == "shrink":
             params["shrink"] = True
         else:
