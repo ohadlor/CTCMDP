@@ -1,4 +1,5 @@
 import os
+import time
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
@@ -56,6 +57,7 @@ def main(cfg: DictConfig):
 
     print("Setup complete. Starting continual learning...")
 
+    start_time = time.time()
     returns = evaluate_policy_hidden_state(
         model=agent,
         env=env,
@@ -63,12 +65,15 @@ def main(cfg: DictConfig):
         adversary_policy=hidden_action_schedule,
         seed=cfg.seed,
     )
+    end_time = time.time()
 
+    print(f"Evaluation took {end_time - start_time:.2f} seconds")
     print(f"Time average reward: {returns.mean():.5f}")
 
     # Save evaluation results
     with open(f"{output_dir}/evaluation.txt", "w") as f:
         f.write(f"Time average reward: {returns.mean():.5f}")
+        f.write(f"\nRun time: {end_time - start_time:.5f} seconds")
 
 
 if __name__ == "__main__":
