@@ -1,26 +1,25 @@
 defaults:
-  - experiments: exp1
-  - agent: pretrained_continual_td3/td3
+  - agent: continual_td3/td3
   - schedule: brownian
+  - experiments: null
   - override hydra/launcher: joblib
   - _self_
 
 master_seed: 2671232903
-seeds: ${seed_sequence:${iterations},${master_seed}}
+seed: ${master_seed}
+
 iterations: 1
-test: true # Add test time wrappers to env
-total_timesteps: 500
-boot_with_shrink_factor: false
+total_timesteps: 200
 agent:
-  radius: 0.01
   model:
     learning_starts: 100
 env:
   id: HalfCheetah-v5
+  domain_randomization: true
+  radius: 0.01
 
 num_gpus: 1 # Total physical GPUs available
-gpu_slot_size: 2 # Jobs per GPU
-parallel_task: ${int_product:${num_gpus},${gpu_slot_size}}
+parallel_task: 1
 
 hydra:
   mode: MULTIRUN
@@ -29,6 +28,8 @@ hydra:
   sweep:
     dir: outputs/${experiment_name}
     subdir: ${custom_dir:${agent},${env},${schedule}}
-  # sweeper:
-  #   params:
-  #     env.id: choice(Ant-v5, HalfCheetah-v5, HumanoidStandup-v5, Walker2d-v5, Hopper-v5)
+  sweeper:
+    params:
+      # env.id: choice(Ant-v5, HalfCheetah-v5, HumanoidStandup-v5, Walker2d-v5, Hopper-v5)
+      env.id: choice(HalfCheetah-v5)
+      seed: ${seed_sequence:${iterations},${master_seed}}

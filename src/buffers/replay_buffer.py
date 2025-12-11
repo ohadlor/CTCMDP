@@ -149,8 +149,9 @@ class TimeIndexedReplayBuffer(BaseBuffer):
         buffer_size: int,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        gamma: float = 1.0,
-        reset_delay: int = 10000,
+        beta: float = 0.5,
+        c: float = 1.0,
+        reset_delay: int = 10_000,
         device: str = "auto",
         rng: Optional[np.random.Generator] = None,
     ):
@@ -159,7 +160,8 @@ class TimeIndexedReplayBuffer(BaseBuffer):
             rng = np.random.default_rng()
         self.rng = rng
         self.time_indices = np.zeros((self.buffer_size,), dtype=np.int32)
-        self.gamma = gamma
+        self.beta = beta
+        self.c = c
         # Reset delay should be expected time steps to traverse 'radius' of hidden observation space
         # ~ hidden observation space radius / hidden step size (depends on nature of hidden action selector)
         self.reset_delay = reset_delay
@@ -188,8 +190,7 @@ class TimeIndexedReplayBuffer(BaseBuffer):
         :return: A batch of samples.
         """
         upper_bound = self.buffer_size if self.full else self.pos
-        time_factor = self.time_indices[:upper_bound].max() - self.time_indices[:upper_bound]
-        weights = self.gamma**time_factor
+        weights = 1 / (self.c + self.time_indices[:upper_bound]) ** self.beta
         weights /= weights.sum()
         batch_inds = self.rng.choice(upper_bound, size=batch_size, p=weights.flatten())
         return self._get_samples(batch_inds)

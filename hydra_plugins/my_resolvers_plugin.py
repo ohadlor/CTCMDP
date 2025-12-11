@@ -25,20 +25,39 @@ def custom_dir_resolver(agent_cfg: DictConfig, env_cfg: DictConfig, schedule_cfg
     cool_name = generate_slug(2)
     timestamp = datetime.now().strftime("%Y%m%d")
     run_name = f"{timestamp}_{cool_name}_{env_cfg.id.split('-')[0]}"
+
+    # Add alg variant and model to run
     if "variant" in agent_cfg:
         run_name += f"_{agent_cfg.variant}"
     run_name += f"_{agent_cfg.model._target_.split('.')[-1]}"
+
+    # Add hidden state schedule name
     if schedule_cfg is not None:
         run_name += f"_{schedule_cfg._target_.split('.')[-1]}"
-    radius = agent_cfg.get("radius", None)
-    if radius is not None:
-        run_name += f"_radius-{radius}"
+
+    train_radius = agent_cfg.get("radius", None)
+    test_radius = env_cfg.get("radius", None)
+    # If in test, use test radius
+    if test_radius is not None:
+        run_name += f"_radius-{test_radius}"
+    # If training use train radius
+    elif train_radius is not None:
+        run_name += f"_radius-{train_radius}"
+
+    # Add sim gamma used for discounted continual td3
     sim_gamma = agent_cfg.model.get("sim_gamma", None)
     if sim_gamma is not None:
         run_name += f"_simdiscount-{sim_gamma}"
+
+    # Add shrink factor if used (currently binary)
     shrink_factor = int(10 * agent_cfg.get("shrink_factor", 0))
     if shrink_factor or agent_cfg.get("boot_with_shrink_factor", False):
         run_name += "_shrink"
+
+    # If in test, add bootstrap source
+    bootstrap = agent_cfg.get("bootstrap", None)
+    if bootstrap is not None and test_radius is not None:
+        run_name += f"_bootstrap-{bootstrap}"
     return run_name
 
 
@@ -53,7 +72,7 @@ def floor_div_resolver(a: float, b: float) -> int:
 def seed_sequence_resolver(n: int, entropy: int) -> str:
     seed_sequence = np.random.SeedSequence(entropy)
     seeds = seed_sequence.generate_state(n)
-    return seeds.tolist()
+    # return seeds.tolist()
     return ",".join(map(str, seeds))
 
 

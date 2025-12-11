@@ -1,12 +1,11 @@
 from typing import Union, Optional
-from tqdm import tqdm
 
 import numpy as np
 import torch as th
 from gymnasium import Env
 from torch.nn import functional as F
 
-from src.buffers.replay_buffer import BaseBuffer
+from src.buffers.replay_buffer import BaseBuffer, BaseReplayBufferSamples
 from src.common.noise import NormalActionNoise
 from src.policies import TD3Policy
 from src.common.utils import polyak_update
@@ -33,7 +32,7 @@ class TD3(BaseAlgorithm):
     :param target_noise_clip: The clip value for the target policy noise.
     :param device: The device to use for training.
     :param tensorboard_log: The path to the tensorboard log directory.
-    :param policy_path: The path to a pretrained policy.
+    :param actor_path: The path to a pretrained actor.
     :param seed: The seed for the random number generator.
     """
 
@@ -53,7 +52,8 @@ class TD3(BaseAlgorithm):
         target_noise_clip: float = 0.5,
         device: Union[th.device, str] = "auto",
         tensorboard_log: str = "runs",
-        policy_path: Optional[str] = None,
+        actor_path: Optional[str] = None,
+        critic_path: Optional[str] = None,
         seed: Optional[int] = None,
     ):
         super().__init__(env.observation_space, env.action_space, lr, device, seed, tensorboard_log)
@@ -80,10 +80,15 @@ class TD3(BaseAlgorithm):
 
         self._n_updates = 0
         self._setup_model()
-        self._make_aliases()
 
-        if policy_path is not None:
-            self.policy.load_actor(policy_path)
+        self.actor_path = actor_path
+        self.critic_path = critic_path
+        if actor_path is not None:
+            self._load_actor(actor_path)
+        if critic_path is not None:
+            self._load_critic(critic_path)
+
+        self._make_aliases()
 
     def _setup_model(self):
         self.policy = TD3Policy(
@@ -101,45 +106,49 @@ class TD3(BaseAlgorithm):
         self.actor_optimizer = self.policy.actor_optimizer
         self.critic_optimizer = self.policy.critic_optimizer
 
+    def update(self, replay_data: BaseReplayBufferSamples, gamma: float) -> tuple[float, Optional[float]]:
+        actor_loss = None
+        with th.no_grad():
+            # Target actions  with clipped noise
+            noise = replay_data.actions.clone().data.normal_(0, self.target_policy_noise)
+            noise = noise.clamp(-self.target_noise_clip, self.target_noise_clip)
+            next_actions = (self.actor_target(replay_data.next_observations) + noise).clamp(-1, 1)
+
+            # Compute target
+            next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
+            next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
+            target_q_values = replay_data.rewards + (1 - replay_data.dones) * gamma * next_q_values
+
+        # Calculate critic loss
+        current_q_values = self.critic(replay_data.observations, replay_data.actions)
+        critic_loss = sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
+
+        self.critic_optimizer.zero_grad()
+        critic_loss.backward()
+        self.critic_optimizer.step()
+
+        if self._n_updates % self.policy_delay == 0:
+            # Calculate actor loss
+            actor_loss = -self.critic.q1_forward(replay_data.observations, self.actor(replay_data.observations)).mean()
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward()
+            self.actor_optimizer.step()
+
+            polyak_update(self.actor.parameters(), self.actor_target.parameters(), self.tau)
+            polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
+
+        return (critic_loss.item(), actor_loss.item()) if actor_loss is not None else (critic_loss.item(), actor_loss)
+
     def train(self, gradient_steps: int, batch_size: int) -> tuple[float, Optional[float]]:
         self.policy.set_training_mode(True)
         actor_losses, critic_losses = [], []
         for _ in range(gradient_steps):
             self._n_updates += 1
             replay_data = self.replay_buffer.sample(batch_size)
-
-            with th.no_grad():
-                # Target actions  with clipped noise
-                noise = replay_data.actions.clone().data.normal_(0, self.target_policy_noise)
-                noise = noise.clamp(-self.target_noise_clip, self.target_noise_clip)
-                next_actions = (self.actor_target(replay_data.next_observations) + noise).clamp(-1, 1)
-
-                # Compute target
-                next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
-                next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
-                target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
-
-            # Calculate critic loss
-            current_q_values = self.critic(replay_data.observations, replay_data.actions)
-            critic_loss = sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
-            critic_losses.append(critic_loss.item())
-
-            self.critic_optimizer.zero_grad()
-            critic_loss.backward()
-            self.critic_optimizer.step()
-
-            if self._n_updates % self.policy_delay == 0:
-                # Calculate actor loss
-                actor_loss = -self.critic.q1_forward(
-                    replay_data.observations, self.actor(replay_data.observations)
-                ).mean()
-                actor_losses.append(actor_loss.item())
-                self.actor_optimizer.zero_grad()
-                actor_loss.backward()
-                self.actor_optimizer.step()
-
-                polyak_update(self.actor.parameters(), self.actor_target.parameters(), self.tau)
-                polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
+            critic_loss, actor_loss = self.update(replay_data, self.gamma)
+            critic_losses.append(critic_loss)
+            if actor_loss is not None:
+                actor_losses.append(actor_loss)
 
         mean_critic_loss = np.mean(critic_losses) if critic_losses else 0.0
         mean_actor_loss = np.mean(actor_losses) if actor_losses else None
@@ -196,15 +205,11 @@ class TD3(BaseAlgorithm):
         self,
         total_timesteps: int,
         log_interval: int = 1,
-        reset_num_timesteps: bool = True,
-        progress_bar: bool = False,
     ):
         """
         Train the agent for a given number of timesteps.
         :param total_timesteps: The total number of timesteps to train for.
         :param log_interval: The number of timesteps between each log.
-        :param reset_num_timesteps: Whether to reset the number of timesteps.
-        :param progress_bar: Whether to show a progress bar.
         """
         if self.tensorboard_log is not None and self.logger is None:
             from torch.utils.tensorboard import SummaryWriter
@@ -213,9 +218,6 @@ class TD3(BaseAlgorithm):
         num_timesteps = 0
 
         obs, _ = self.env.reset(seed=self.seed)
-
-        if progress_bar:
-            pbar = tqdm(total=total_timesteps)
 
         ep_rewards = []
         ep_len = 0
@@ -227,10 +229,6 @@ class TD3(BaseAlgorithm):
 
             ep_rewards.append(reward)
             ep_len += 1
-
-            if progress_bar:
-                pbar.update(1)
-
             num_timesteps += 1
 
             # Train the agent
@@ -243,7 +241,7 @@ class TD3(BaseAlgorithm):
 
             # Handle episode termination
             if done:
-                obs, _ = self.env.reset(seed=self.seed)
+                obs, _ = self.env.reset()
                 self.action_noise.reset()
                 if self.logger:
                     self.logger.add_scalar("rollout/ep_rew_mean", sum(ep_rewards), num_timesteps)
@@ -251,12 +249,9 @@ class TD3(BaseAlgorithm):
                 ep_rewards = []
                 ep_len = 0
 
-            # Log progress
-            if not progress_bar and log_interval is not None and num_timesteps % log_interval == 0:
-                print(f"Timestep: {num_timesteps}/{total_timesteps}")
-
-        if progress_bar:
-            pbar.close()
+            # Checkpoint agent every 5e5 steps
+            if num_timesteps % 5e5 == 0:
+                self.save(self.logger.get_logdir() + f"/model_{num_timesteps}.pth")
 
         return
 
@@ -268,3 +263,9 @@ class TD3(BaseAlgorithm):
             },
             path,
         )
+
+    def _load_actor(self, path: str) -> None:
+        self.policy.load_actor(path)
+
+    def _load_critic(self, path: str) -> None:
+        self.policy.load_critic(path)

@@ -1,15 +1,15 @@
 defaults:
+  - agent: tc_m2td3/vanilla
   - pretrain: null
-  - agent: vanilla_tc_m2td3
   - override hydra/launcher: joblib
   - _self_
 
-master_seed: 2671232903
-total_timesteps: 1e3
+seed: 2671232903
+total_timesteps: 1e2
 experiment_name: 0
-# agent:
-#   model:
-#     learning_starts: 1000
+agent:
+  model:
+    learning_starts: 0
 env:
   id: HalfCheetah-v5
 
@@ -26,4 +26,4 @@ hydra:
   sweeper:
     params:
       # env.id: choice(Ant-v5, HalfCheetah-v5, HumanoidStandup-v5, Walker2d-v5, Hopper-v5)
-      agent: choice(td3, stacked_tc_m2td3, vanilla_tc_m2td3, oracle_tc_m2td3)
+      agent: choice(td3, tc_m2td3/vanilla, tc_m2td3/stacked, tc_m2td3/oracle)

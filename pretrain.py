@@ -35,7 +35,7 @@ def main(cfg: DictConfig):
     env_name = cfg.env.id.split("-")[0]
     env = create_env(cfg)
 
-    agent_params = {"seed": cfg.master_seed, "env": env, "tensorboard_log": output_dir}
+    agent_params = {"seed": cfg.seed, "env": env, "tensorboard_log": output_dir}
     agent: BaseAlgorithm = hydra.utils.instantiate(cfg.agent.model, **agent_params, _convert_="all")
 
     setup_string = (
@@ -44,7 +44,7 @@ def main(cfg: DictConfig):
     if "variant" in cfg.agent:
         setup_string += f", variant: {cfg.agent.variant}"
     print(setup_string)
-    agent.learn(total_timesteps=int(cfg.total_timesteps), progress_bar=True)
+    agent.learn(total_timesteps=int(cfg.total_timesteps))
 
     print("Training finished. Saving model...")
     save_path = f"pretrained_models/{env_name}/"
@@ -60,7 +60,7 @@ def main(cfg: DictConfig):
     agent.save(save_path)
 
     print("Evaluation...")
-    mean_reward, std_reward = evaluate_policy(agent, env, n_eval_episodes=10, seed=cfg.master_seed)
+    mean_reward, std_reward = evaluate_policy(agent, env, n_eval_episodes=10, seed=cfg.seed)
     print(f"Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
 
     # Save evaluation results

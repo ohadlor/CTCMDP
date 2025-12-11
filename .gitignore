@@ -75,6 +75,9 @@ pretrained_models/
 .venv
 *.lock
 cli_commands.txt
+.config
+.ssh
+.wget-hsts
 
 
 # mypy

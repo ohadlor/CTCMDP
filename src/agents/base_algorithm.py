@@ -47,6 +47,7 @@ class BaseAlgorithm(ABC):
         # th.manual_seed(seed)
 
         self.policy = None
+        self.update_logger_path(tensorboard_log)
 
     def update_logger_path(self, path: str) -> SummaryWriter:
         self.logger = SummaryWriter(log_dir=path)

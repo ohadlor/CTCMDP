@@ -1,23 +1,23 @@
 defaults:
-  - experiments: null
   - agent: pretrained_continual_td3/td3
   - schedule: brownian
+  - experiments: null
   - override hydra/launcher: joblib
   - _self_
 
 master_seed: 2671232903
-seeds: ${seed_sequence:${iterations},${master_seed}}
+seed: ${master_seed}
+
 iterations: 10
-test: true
-total_timesteps: 20_000
-boot_with_shrink_factor: false
-agent:
-  radius: 0.01
+total_timesteps: 200_000
 env:
   id: Ant-v5
+  domain_randomization: true
+  # Set radius for environment
+  radius: 0.01
 
 num_gpus: 6 # Total physical GPUs available
-parallel_task: 20
+parallel_task: 100
 
 hydra:
   mode: MULTIRUN
@@ -29,4 +29,5 @@ hydra:
   sweeper:
     params:
       env.id: choice(Ant-v5, HalfCheetah-v5, HumanoidStandup-v5, Walker2d-v5, Hopper-v5)
+      seed: ${seed_sequence:${iterations},${master_seed}}
 # Experiments control for schedules, radius vs discount factor, bootstrap with shrink factor

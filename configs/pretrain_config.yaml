@@ -1,13 +1,14 @@
 defaults:
-  - pretrain: null
   - agent: td3
+  - pretrain: null
   - override hydra/launcher: joblib
   - _self_
 
-master_seed: 2671232903
+seed: 2671232903
 total_timesteps: 2e6
 env:
   id: Ant-v5
+  domain_randomization: true
 
 num_gpus: 6 # Total physical GPUs available
 parallel_task: 40

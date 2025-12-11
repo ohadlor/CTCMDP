@@ -1,5 +1,5 @@
 from typing import Optional
-from abc import abstractmethod, ABC
+from abc import ABC
 
 import numpy as np
 
@@ -55,16 +55,17 @@ def make_continual_learner(
             self.batch_size = batch_size
 
             self.stationary_env = None
+            # Used for simulation
             self.last_obs = None
-            self.replay_buffers: list[TimeIndexedReplayBuffer] = []
+            self.replay_buffers: list[BaseBuffer] = [self.replay_buffer]
 
         @staticmethod
-        def _base_to_time_indexed_buffer(buffer: BaseBuffer, gamma: float = 1.0) -> TimeIndexedReplayBuffer:
+        def _base_to_time_indexed_buffer(buffer: BaseBuffer) -> TimeIndexedReplayBuffer:
             return TimeIndexedReplayBuffer(
                 buffer.buffer_size,
                 buffer.observation_space,
                 buffer.action_space,
-                gamma,
+                beta=0.5,
                 device=buffer.device,
                 rng=buffer.rng,
             )
@@ -72,8 +73,6 @@ def make_continual_learner(
         def predict(
             self,
             observation: np.ndarray,
-            stationary_env: Optional[FrozenHiddenObservation] = None,
-            learning: bool = True,
             log_interval: int = 1,
         ) -> np.ndarray:
             """
@@ -84,44 +83,93 @@ def make_continual_learner(
             ----------
             observation : np.ndarray
                 The observation to get the action from.
-            sample : Optional[dict], optional
-                A dictionary containing the transition to add to the replay buffer, by default None.
-            stationary_env : Optional[FrozenHiddenObservation], optional
-                The stationary environment to use for training, by default None.
-            learning : bool, optional
-                Whether to perform a training step, by default True.
 
             Returns
             -------
             np.ndarray
                 The policy action.
             """
-            action = super().predict(observation)
-            if learning:
-                self.last_obs = observation
-                self.num_timesteps += 1
+            action, _ = self.sample_action(observation, self.num_timesteps)
 
-                self.stationary_env = stationary_env
-
-                # Perform a training step
-                if self.num_timesteps >= self.learning_starts and self.replay_buffer.size > 0:
-                    losses = self.train(gradient_steps=self.gradient_steps, batch_size=self.batch_size)
-                    self.loss_logger(losses, log_interval)
-
+            self.misc_logger(log_interval)
             return action
 
-        def add(self, sample: Optional[dict] = None):
-            if sample is not None:
-                # A transition has just occurred, add it to the replay buffer.
-                self.replay_buffer.add(**sample)
-                if sample["done"]:
-                    for buffer in self.replay_buffers:
-                        buffer.reset_from_env()
+        def learn(
+            self,
+            observation: np.ndarray,
+            stationary_env: Optional[FrozenHiddenObservation] = None,
+            log_interval: int = 1,
+        ):
+            """Learning function for use during evaluation for continual learning
 
-        @abstractmethod
+            Parameters
+            ----------
+            observation : np.ndarray
+                _description_
+            stationary_env : Optional[FrozenHiddenObservation], optional
+                The stationary environment to use for training, by default None.
+            log_interval : int, optional
+                _description_, by default 1
+            """
+
+            self.num_timesteps += 1
+            self.last_obs = observation
+            self.stationary_env = stationary_env
+
+            # Perform a training step
+            if self.num_timesteps >= self.learning_starts and self.replay_buffer.size > 0:
+                losses = self.train(gradient_steps=self.gradient_steps, batch_size=self.batch_size)
+                self.loss_logger(losses, log_interval)
+
+        def add(self, sample: Optional[dict] = None, truncated: bool = False):
+            if sample is not None:
+                # Actions are given from real experience, need to be scaled
+                sample["action"] = self.policy.scale_action(sample["action"])
+                self.replay_buffer.add(**sample)
+                done = sample["done"] or truncated
+                if done:
+                    for buffer in self.replay_buffers:
+                        if hasattr(buffer, "reset_delay"):
+                            buffer.reset_from_env()
+
         def reset(self, seed: Optional[int] = None) -> None:
+            self.set_seed(seed)
             for buffer in self.replay_buffers:
                 buffer.reset(seed)
-            # Reset policy
+            self.policy.reset()
+            # Redefine aliases to point to reset policy (critical)
+            self._make_aliases()
+
+        def sample_action(self, obs: np.ndarray, num_timesteps: int) -> tuple[np.ndarray, np.ndarray]:
+            """
+            Sample an action from the policy, add noise, and scale it.
+            :param obs: Observation from the environment
+            :param num_timesteps: The current timestep
+            :return: A tuple containing:
+                - The unscaled action to be used in the environment.
+                - The scaled action (between -1 and 1) to be stored in the buffer.
+            """
+            if num_timesteps < self.learning_starts:
+                unscaled_action = self.action_space.sample()
+            else:
+                unscaled_action = super().predict(obs)
+
+            scaled_action = self.policy.scale_action(unscaled_action)
+
+            # Add noise to the action (improve exploration)
+            if self.action_noise is not None:
+                scaled_action = np.clip(scaled_action + self.action_noise(), -1, 1)
+
+            # We store the scaled action in the buffer
+            buffer_action = scaled_action
+            action = self.policy.unscale_action(scaled_action)
+
+            return action, buffer_action
+
+        def misc_logger(self, log_interval: int = 1):
+            pass
+
+        def loss_logger(self, losses: list[np.ndarray], log_interval: int = 1):
+            pass
 
     return ContinualLearningAlgorithm

@@ -36,8 +36,8 @@ PARAMETER_SPACE = {
 }
 
 
-def get_param_bounds(env_name: str) -> dict[str, tuple[float, float]]:
-
+def get_param_bounds(env_id: str) -> dict[str, tuple[float, float]]:
+    env_name = env_id.split("-")[0]
     full_set = PARAMETER_SPACE.get(env_name, {})
     uncertainty_set = {param: bounds[0] for param, bounds in full_set.items()}
     return uncertainty_set

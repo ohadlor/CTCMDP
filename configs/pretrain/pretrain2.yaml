@@ -8,4 +8,4 @@ hydra:
   mode: MULTIRUN
   sweeper:
     params:
-      agent: choice(vanilla_tc_m2td3, stacked_tc_m2td3, oracle_tc_m2td3)
+      agent: choice(tc_m2td3/vanilla, tc_m2td3/stacked, tc_m2td3/oracle)

@@ -27,7 +27,7 @@ class RobustWrapper(Wrapper):
     It supports the `env.reset(options=params)` interface to set parameters for an episode.
     """
 
-    def __init__(self, env: Env, param_space: Optional[dict[str, Any]] = None, seed: Optional[int] = None):
+    def __init__(self, env: Env, domain_space: Optional[dict[str, Any]] = None, seed: Optional[int] = None):
         super().__init__(env)
 
         # Ensure we can access the MuJoCo model
@@ -46,7 +46,7 @@ class RobustWrapper(Wrapper):
         self.param_defaults = get_param_defaults(self.env_name)
 
         # For domain randomization
-        self.param_space = param_space
+        self.domain_space = domain_space
         self.rng = np.random.default_rng(seed)
 
     def _get_name_to_index_map(self, mujoco_attribute: str) -> list[str]:
@@ -166,9 +166,9 @@ class RobustWrapper(Wrapper):
         super().reset(seed=seed, options=options)
 
         # Domain randomization
-        if self.param_space:
+        if self.domain_space:
             new_params = {}
-            for param, bounds in self.param_space.items():
+            for param, bounds in self.domain_space.items():
                 if isinstance(bounds, (list, tuple)) and len(bounds) == 2:
                     low, high = bounds
                     val = self.rng.uniform(low, high)
@@ -395,7 +395,7 @@ class SplitActionObservationSpace(Wrapper):
 
         self.copy_to_stationary_env = env.copy_to_stationary_env
 
-    def step(self, action: np.ndarray, hidden_action: np.ndarray):
+    def step(self, action: np.ndarray, hidden_action: Optional[np.ndarray] = None):
         """
         Performs a step in the environment.
 
@@ -413,6 +413,8 @@ class SplitActionObservationSpace(Wrapper):
             whether the episode has terminated, whether the episode has been truncated,
             and a dictionary of additional information.
         """
+        if hidden_action is None:
+            hidden_action = np.zeros(self.hidden_action_space.shape)
         dict_action = {"observed": action, "hidden": hidden_action}
         obs, reward, terminated, truncated, info = self.env.step(dict_action)
         info["hidden"] = obs["hidden"]

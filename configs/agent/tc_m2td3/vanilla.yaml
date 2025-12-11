@@ -1,0 +1,6 @@
+defaults:
+  - /agent/tc_m2td3/parameters@_here_
+  - _self_
+
+variant: vanilla
+bootstrap: vanilla_TCM2TD3

@@ -2,7 +2,6 @@ from typing import Any, Callable, Optional
 
 import gymnasium as gym
 import numpy as np
-from joblib import Parallel, delayed
 
 from src.agents.base_algorithm import BaseAlgorithm
 from src.schedules import BaseActionSchedule
@@ -62,6 +61,7 @@ def evaluate_policy(
     """
     all_rewards = []
 
+    # If robust alg, evaluate on the stationary env
     if check_for_wrapper(env, TCRMDP):
         env.reset(seed=seed)
         env = env.copy_to_stationary_env()
@@ -105,23 +105,16 @@ def evaluate_policy(
     return total_reward.mean(), total_reward.std()
 
 
-def _run_evaluation_iteration(
-    i: int,
+def evaluate_policy_hidden_state(
     seed: int,
     model: BaseAlgorithm,
     env: gym.Env,
     adversary_policy: Optional[BaseActionSchedule],
     total_timesteps: int,
-    is_continual_learner: bool,
 ):
-    """Helper function to run a single evaluation iteration in parallel."""
-    if is_continual_learner:
-        model.reset(seed)
-    else:
-        model.set_seed(seed)
-    if adversary_policy:
-        adversary_policy.set_seed(seed)
-    logger = model.update_logger_path(model.tensorboard_log + f"/iter_{i}")
+    is_continual_learner = getattr(model, "is_continual_learner", False)
+
+    logger = model.logger
 
     ep_rewards = []
     iter_rewards = []
@@ -130,16 +123,12 @@ def _run_evaluation_iteration(
     if adversary_policy is not None:
         adversary_policy.reset(start_state=hidden_state)
 
-    continual_args = {}
-    if is_continual_learner:
-        continual_args["stationary_env"] = env.copy_to_stationary_env()
+    if getattr(model, "oracle_actor", False):
+        observation = np.concatenate([observation, hidden_state])
 
     for current_step in range(total_timesteps):
-        # Get observation
-        if getattr(model, "oracle_actor", False):
-            observation = np.concatenate([observation, hidden_state])
-        # Predict (and learn)
-        action = model.predict(observation, **continual_args)
+        # Predict
+        action = model.predict(observation)
         if adversary_policy is not None:
             hidden_action = adversary_policy.step(hidden_state)
         else:
@@ -147,18 +136,22 @@ def _run_evaluation_iteration(
 
         # Step env
         next_observation, next_hidden_state, reward, terminated, truncated, _ = env.step(action, hidden_action)
-        done = terminated or truncated
-        sample = {
-            "obs": observation,
-            "next_obs": next_observation,
-            "action": action,
-            "reward": reward,
-            "done": done,
-        }
-        # Add to continual learner buffer
+
+        if getattr(model, "oracle_actor", False):
+            next_observation = np.concatenate([next_observation, next_hidden_state])
         if is_continual_learner:
-            model.add(sample)
-            continual_args["stationary_env"] = env.copy_to_stationary_env()
+            sample = {
+                "obs": observation,
+                "next_obs": next_observation,
+                "action": action,
+                "reward": reward,
+                "done": terminated,
+            }
+            # Add to continual learner buffer
+            model.add(sample, truncated)
+            stationary_env = env.copy_to_stationary_env()
+            # Learn
+            model.learn(next_observation, stationary_env)
 
         observation = next_observation
         hidden_state = next_hidden_state
@@ -169,74 +162,14 @@ def _run_evaluation_iteration(
         logger.add_scalar("rollout/rew", reward, current_step)
 
         # Handle episode termination
+        done = terminated or truncated
         if done:
-            observation, hidden_state, _ = env.reset(seed=seed)
+            observation, hidden_state, _ = env.reset()
             if adversary_policy is not None:
                 adversary_policy.reset(start_state=hidden_state)
 
-            logger.add_scalar("rollout/ep_rew", sum(ep_rewards), current_step)
+            logger.add_scalar("rollout/ep_rew_mean", sum(ep_rewards), current_step)
             ep_rewards = []
 
-    return iter_rewards
-
-
-def evaluate_policy_hidden_state(
-    env: gym.Env,
-    model: BaseAlgorithm,
-    adversary_policy: Optional[BaseActionSchedule] = None,
-    total_timesteps: int = 100000,
-    seeds: Optional[list[int]] = [],
-    n_jobs: int = -1,
-):
-    """
-    Evaluates a model's policy in a continual learning setup with a hidden state.
-
-    This function is designed for environments where the agent's performance is
-    evaluated over a series of iterations (episodes), each with a potentially
-    different underlying system dynamic controlled by a hidden state. It supports
-    continual learners and can incorporate an adversary policy that influences
-    the hidden state.
-
-    Parameters
-    ----------
-    env : gym.Env
-        The Gymnasium environment, which should expose hidden states.
-    model : BaseAlgorithm
-        The algorithm to evaluate. It should be a subclass of `BaseAlgorithm`.
-    adversary_policy : Optional[BaseActionSchedule], optional
-        An optional policy for the adversary that acts on the hidden state,
-        by default None.
-    total_timesteps : int, optional
-        The total number of timesteps for each evaluation, by default 100000.
-    seeds : Optional[list[int]], optional
-        A list of seeds for each evaluation iteration to ensure reproducibility,
-        by default [].
-    n_jobs : int, optional
-        The number of jobs to run in parallel. -1 means using all available cores,
-        by default -1.
-
-    Returns
-    -------
-    tuple[float, float]
-        The mean and standard deviation of the average reward across all episodes.
-    """
-    is_continual_learner = getattr(model, "is_continual_learner", False)
-
-    with Parallel(n_jobs=n_jobs, verbose=10, backend="loky", mmap_mode="c") as parallel:
-        all_rewards = parallel(
-            delayed(_run_evaluation_iteration)(
-                i,
-                seed,
-                model,
-                env,
-                adversary_policy,
-                total_timesteps,
-                is_continual_learner,
-            )
-            for i, seed in enumerate(seeds)
-        )
-
-    all_rewards = np.array(all_rewards)
-    time_avg_reward = all_rewards.mean(axis=1)
-    np.save(f"{model.tensorboard_log}/rewards.npy", all_rewards)
-    return time_avg_reward.mean(), time_avg_reward.std()
+    returns = np.array(iter_rewards)
+    return returns

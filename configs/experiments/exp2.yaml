@@ -5,5 +5,6 @@ experiment_name: discount_radius
 hydra:
   sweeper:
     params:
-      agent.radius: ${logspace:0.0001,0.5,20}
-      ++agent.model.sim_gamma: ${linspace:0,1,20}
+      agent: choice(continual_discounted_td3/td3)
+      ++agent.radius: ${logspace:0.0001,0.5,10}
+      ++agent.model.sim_gamma: ${linspace:0,1,21}

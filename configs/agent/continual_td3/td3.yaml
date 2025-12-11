@@ -1,0 +1,7 @@
+defaults:
+  - /agent/continual_td3/parameters@_here_
+  - _self_
+
+model:
+  learning_starts: 0
+bootstrap: TD3

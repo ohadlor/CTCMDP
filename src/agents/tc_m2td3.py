@@ -1,5 +1,4 @@
 from typing import Union, Optional
-from tqdm import tqdm
 
 import numpy as np
 import torch as th
@@ -33,7 +32,6 @@ class TCM2TD3(BaseAlgorithm):
     :param target_policy_noise: The standard deviation of the target policy noise.
     :param target_noise_clip: The clip value for the target policy noise.
     :param oracle_actor: Whether to use an oracle actor.
-    :param policy_path: The path to a pretrained policy.
     :param device: The device to use for training.
     :param tensorboard_log: The path to the tensorboard log directory.
     :param seed: The seed for the random number generator.
@@ -56,7 +54,7 @@ class TCM2TD3(BaseAlgorithm):
         target_policy_noise: float = 0.2,
         target_noise_clip: float = 0.5,
         oracle_actor: bool = False,
-        policy_path: Optional[str] = None,
+        actor_path: Optional[str] = None,
         device: Union[th.device, str] = "auto",
         tensorboard_log: str = "runs",
         seed: Optional[int] = None,
@@ -93,8 +91,9 @@ class TCM2TD3(BaseAlgorithm):
         self._setup_model()
         self._make_aliases()
 
-        if policy_path is not None:
-            self.policy.load_actor(policy_path)
+        self.actor_path = actor_path
+        if actor_path is not None:
+            self._load_actor(actor_path)
 
         self._n_updates = 0
 
@@ -121,13 +120,6 @@ class TCM2TD3(BaseAlgorithm):
         self.actor_optimizer = self.policy.actor_optimizer
         self.adversary_optimizer = self.policy.adversary_optimizer
         self.critic_optimizer = self.policy.critic_optimizer
-
-    @staticmethod
-    def log_gradients(model, writer, step, name):
-        """Log the gradients of a model to tensorboard."""
-        for tag, value in model.named_parameters():
-            if value.grad is not None:
-                writer.add_scalar(f"gradients/{name}/{tag}", value.grad.norm(), step)
 
     def train(self, gradient_steps: int, batch_size: int) -> tuple[float, Optional[float], Optional[float]]:
         """
@@ -173,8 +165,6 @@ class TCM2TD3(BaseAlgorithm):
 
             self.critic_optimizer.zero_grad()
             critic_loss.backward()
-            if self.logger:
-                self.log_gradients(self.critic, self.logger, self._n_updates, "critic")
             self.critic_optimizer.step()
 
             if self._n_updates % self.policy_delay == 0:
@@ -187,8 +177,6 @@ class TCM2TD3(BaseAlgorithm):
 
                 self.actor_optimizer.zero_grad()
                 agent_loss.backward()
-                if self.logger:
-                    self.log_gradients(self.actor, self.logger, self._n_updates, "actor")
                 self.actor_optimizer.step()
 
                 # Train adversary
@@ -203,8 +191,6 @@ class TCM2TD3(BaseAlgorithm):
 
                 self.adversary_optimizer.zero_grad()
                 adversary_loss.backward()
-                if self.logger:
-                    self.log_gradients(self.adversary, self.logger, self._n_updates, "adversary")
                 self.adversary_optimizer.step()
 
                 polyak_update(self.actor.parameters(), self.actor_target.parameters(), self.tau)
@@ -301,16 +287,12 @@ class TCM2TD3(BaseAlgorithm):
         self,
         total_timesteps: int,
         log_interval: int = 1,
-        reset_num_timesteps: bool = True,
-        progress_bar: bool = False,
     ):
         """
         Train the agent for a given number of timesteps.
 
         :param total_timesteps: The total number of timesteps to train for.
         :param log_interval: The number of timesteps between each log.
-        :param reset_num_timesteps: Whether to reset the number of timesteps.
-        :param progress_bar: Whether to show a progress bar.
         """
         if self.tensorboard_log is not None and self.logger is None:
             from torch.utils.tensorboard import SummaryWriter
@@ -319,9 +301,6 @@ class TCM2TD3(BaseAlgorithm):
         num_timesteps = 0
 
         obs, hidden_state, _ = self.env.reset(seed=self.seed)
-
-        if progress_bar:
-            pbar = tqdm(total=total_timesteps)
 
         ep_rewards = []
         ep_len = 0
@@ -335,10 +314,6 @@ class TCM2TD3(BaseAlgorithm):
 
             ep_rewards.append(reward)
             ep_len += 1
-
-            if progress_bar:
-                pbar.update(1)
-
             num_timesteps += 1
 
             # Train the agent
@@ -349,12 +324,10 @@ class TCM2TD3(BaseAlgorithm):
                     if actor_loss is not None:
                         self.logger.add_scalar("loss/actor_loss", actor_loss, self._n_updates)
                         self.logger.add_scalar("loss/adversary_loss", adversary_loss, self._n_updates)
-                # Track first hidden state to see trajectory
-                # self.logger.add_scalar("hidden_state/1", hidden_state[0], num_timesteps)
 
             # Handle episode termination
             if done:
-                obs, hidden_state, _ = self.env.reset(seed=self.seed)
+                obs, hidden_state, _ = self.env.reset()
                 self.action_noise.reset()
                 if self.logger:
                     self.logger.add_scalar("rollout/ep_rew_mean", sum(ep_rewards), num_timesteps)
@@ -362,12 +335,9 @@ class TCM2TD3(BaseAlgorithm):
                 ep_rewards = []
                 ep_len = 0
 
-            # Checkpoint agent every 1e6 steps
-            if num_timesteps % 1e6 == 0:
-                self.save(self.logger.get_logdir() + "/model.pth")
-
-        if progress_bar:
-            pbar.close()
+            # Checkpoint agent every 5e5 steps
+            if num_timesteps % 5e5 == 0:
+                self.save(self.logger.get_logdir() + f"/model_{num_timesteps}.pth")
 
         return
 
@@ -380,3 +350,6 @@ class TCM2TD3(BaseAlgorithm):
             },
             path,
         )
+
+    def _load_actor(self, path: str) -> None:
+        self.policy.load_actor(path)
