@@ -3,7 +3,6 @@ from abc import ABC
 
 import numpy as np
 
-from src.environments.wrappers import FrozenHiddenObservation
 from src.buffers.replay_buffer import TimeIndexedReplayBuffer, BaseBuffer
 
 from .base_algorithm import BaseAlgorithm
@@ -54,18 +53,17 @@ def make_continual_learner(
             self.gradient_steps = gradient_steps
             self.batch_size = batch_size
 
-            self.stationary_env = None
-            # Used for simulation
-            self.last_obs = None
             self.replay_buffers: list[BaseBuffer] = [self.replay_buffer]
 
         @staticmethod
-        def _base_to_time_indexed_buffer(buffer: BaseBuffer) -> TimeIndexedReplayBuffer:
+        def _base_to_time_indexed_buffer(
+            buffer: BaseBuffer, current_episode_multiplier: float
+        ) -> TimeIndexedReplayBuffer:
             return TimeIndexedReplayBuffer(
                 buffer.buffer_size,
                 buffer.observation_space,
                 buffer.action_space,
-                beta=0.5,
+                current_episode_multiplier=current_episode_multiplier,
                 device=buffer.device,
                 rng=buffer.rng,
             )
@@ -97,7 +95,6 @@ def make_continual_learner(
         def learn(
             self,
             observation: np.ndarray,
-            stationary_env: Optional[FrozenHiddenObservation] = None,
             log_interval: int = 1,
         ):
             """Learning function for use during evaluation for continual learning
@@ -106,15 +103,12 @@ def make_continual_learner(
             ----------
             observation : np.ndarray
                 _description_
-            stationary_env : Optional[FrozenHiddenObservation], optional
-                The stationary environment to use for training, by default None.
             log_interval : int, optional
                 _description_, by default 1
             """
 
             self.num_timesteps += 1
             self.last_obs = observation
-            self.stationary_env = stationary_env
 
             # Perform a training step
             if self.num_timesteps >= self.learning_starts and self.replay_buffer.size > 0:
@@ -129,8 +123,8 @@ def make_continual_learner(
                 done = sample["done"] or truncated
                 if done:
                     for buffer in self.replay_buffers:
-                        if hasattr(buffer, "reset_delay"):
-                            buffer.reset_from_env()
+                        if isinstance(buffer, TimeIndexedReplayBuffer):
+                            buffer.reset_times()
 
         def reset(self, seed: Optional[int] = None) -> None:
             self.set_seed(seed)

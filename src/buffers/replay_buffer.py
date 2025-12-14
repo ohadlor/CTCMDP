@@ -149,9 +149,8 @@ class TimeIndexedReplayBuffer(BaseBuffer):
         buffer_size: int,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        beta: float = 0.5,
-        c: float = 1.0,
-        reset_delay: int = 10_000,
+        current_episode_multiplier: float = 1,
+        in_episode_increment_factor: float = 0.001,
         device: str = "auto",
         rng: Optional[np.random.Generator] = None,
     ):
@@ -160,11 +159,12 @@ class TimeIndexedReplayBuffer(BaseBuffer):
             rng = np.random.default_rng()
         self.rng = rng
         self.time_indices = np.zeros((self.buffer_size,), dtype=np.int32)
-        self.beta = beta
-        self.c = c
-        # Reset delay should be expected time steps to traverse 'radius' of hidden observation space
-        # ~ hidden observation space radius / hidden step size (depends on nature of hidden action selector)
-        self.reset_delay = reset_delay
+        # how much added weight samples from the current episode have,
+        # defaults to 1 (no added weight), for latent state randomization
+        self.current_episode_multiplier = current_episode_multiplier - 1
+        # How much the multiplier decreases each timestep in episode,
+        # for the changes in latent state in episode
+        self.in_episode_increment_factor = in_episode_increment_factor
 
     def add(self, obs, next_obs, action, reward, done) -> None:
         """
@@ -178,7 +178,8 @@ class TimeIndexedReplayBuffer(BaseBuffer):
         """
         pos = self.pos
         super().add(obs, next_obs, action, reward, done)
-        self.time_indices[pos] = 0
+        # Set current episode time indicies to 1
+        self.time_indices[pos] = 1
 
     def sample(self, batch_size: int) -> BaseReplayBufferSamples:
         """
@@ -190,20 +191,20 @@ class TimeIndexedReplayBuffer(BaseBuffer):
         :return: A batch of samples.
         """
         upper_bound = self.buffer_size if self.full else self.pos
-        weights = 1 / (self.c + self.time_indices[:upper_bound]) ** self.beta
+        weights = (
+            np.ones((upper_bound,), dtype=np.float32)
+            + self.current_episode_multiplier * self.time_indices[:upper_bound]
+        )
         weights /= weights.sum()
         batch_inds = self.rng.choice(upper_bound, size=batch_size, p=weights.flatten())
         return self._get_samples(batch_inds)
 
-    def increment_time_indices(self) -> None:
+    def reset_times(self) -> None:
         """
         Increment the time index of all transitions in the buffer by 1.
         """
-        n_entries = self.buffer_size if self.full else self.pos
-        self.time_indices[:n_entries] += 1
+        self.time_indices = np.zeros((self.buffer_size,), dtype=np.int32)
 
-    def reset_from_env(self) -> None:
-        # Call when env is reset to add distance between resets for time_indices,
-        # such that samples from previous resets are less likely to be called
-        n_entries = self.buffer_size if self.full else self.pos
-        self.time_indices[:n_entries] = self.reset_delay
+    def step_times(self) -> None:
+        self.time_indices = self.time_indices - self.in_episode_increment_factor
+        self.time_indices = np.clip(self.time_indices, 0, None)

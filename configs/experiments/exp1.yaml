@@ -1,9 +1,15 @@
 # @package _global_
-# sweep over schedules
+# Sweep over radius and sim discount factor
 
-experiment_name: schedules
+experiment_name: discount_radius
+
+iterations: 5
+total_timesteps: 500_000
+
 hydra:
   sweeper:
     params:
-      schedule: choice(brownian, linear, sinusoidal, static)
-      agent: choice(td3, tc_m2td3/vanilla, tc_m2td3/stacked, tc_m2td3/oracle, continual_td3/clean, continual_td3/td3, continual_td3/tc_m2td3, continual_discounted_td3/clean, continual_discounted_td3/td3, continual_discounted_td3/tc_m2td3)
+      agent: choice(continual_discounted_td3/td3)
+      ++env.radius: ${logspace:-4,0,9}
+      ++agent.model.sim_gamma: ${linspace:0.74,0.99,11}
+# Run time estimate: n_radius=9 * n_sim_gamma=11 * n_envs=5 * n_iters=5 * 30 min per 100k steps * n_steps=5 / n_parallel_runs=100

@@ -126,6 +126,10 @@ def evaluate_policy_hidden_state(
     if getattr(model, "oracle_actor", False):
         observation = np.concatenate([observation, hidden_state])
 
+    if hasattr(model, "stationary_env"):
+        stationary_env = env.get_wrapper_attr("make_env")()
+        model.set_stationary_env(stationary_env)
+
     for current_step in range(total_timesteps):
         # Predict
         action = model.predict(observation)
@@ -149,9 +153,10 @@ def evaluate_policy_hidden_state(
             }
             # Add to continual learner buffer
             model.add(sample, truncated)
-            stationary_env = env.copy_to_stationary_env()
+            if hasattr(model, "stationary_env"):
+                model.update_stationary_env(env)
             # Learn
-            model.learn(next_observation, stationary_env)
+            model.learn(next_observation)
 
         observation = next_observation
         hidden_state = next_hidden_state

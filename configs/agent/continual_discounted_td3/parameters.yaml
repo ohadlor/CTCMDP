@@ -1,9 +1,10 @@
 model:
   _target_: src.agents.continual_td3.DiscountModelContinualTD3
   gamma: null
-  sim_gamma: 0.9
+  sim_gamma: 0.99
   sim_horizon: 1
-  buffer_size: 50_000
+  sim_buffer_size: 1_000_000
   p_real: 0
+  current_episode_multiplier: 0
 
-  # Key parameters: sim_gamma, sim_horizon, sim_buffer_size, buffer.beta
+  # Key parameters: sim_gamma, sim_horizon, sim_buffer_size, current_episode_multiplier

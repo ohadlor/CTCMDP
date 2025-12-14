@@ -52,11 +52,12 @@ class TD3(BaseAlgorithm):
         target_noise_clip: float = 0.5,
         device: Union[th.device, str] = "auto",
         tensorboard_log: str = "runs",
+        checkpoint_path: Optional[str] = None,
         actor_path: Optional[str] = None,
         critic_path: Optional[str] = None,
         seed: Optional[int] = None,
     ):
-        super().__init__(env.observation_space, env.action_space, lr, device, seed, tensorboard_log)
+        super().__init__(env.observation_space, env.action_space, lr, device, seed, tensorboard_log, checkpoint_path)
         self.env = env
         self.batch_size = batch_size
         self.gamma = gamma
@@ -251,7 +252,7 @@ class TD3(BaseAlgorithm):
 
             # Checkpoint agent every 5e5 steps
             if num_timesteps % 5e5 == 0:
-                self.save(self.logger.get_logdir() + f"/model_{num_timesteps}.pth")
+                self.save(self.checkpoint_path + f"_{num_timesteps}.pth")
 
         return
 

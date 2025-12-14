@@ -8,16 +8,11 @@ defaults:
 master_seed: 2671232903
 seed: ${master_seed}
 
-iterations: 10
-total_timesteps: 200_000
-env:
-  id: Ant-v5
-  domain_randomization: true
-  # Set radius for environment
-  radius: 0.01
-
 num_gpus: 6 # Total physical GPUs available
 parallel_task: 100
+
+env:
+  domain_randomization: true
 
 hydra:
   mode: MULTIRUN
@@ -28,6 +23,6 @@ hydra:
     subdir: ${custom_dir:${agent},${env},${schedule}}
   sweeper:
     params:
-      env.id: choice(Ant-v5, HalfCheetah-v5, HumanoidStandup-v5, Walker2d-v5, Hopper-v5)
-      seed: ${seed_sequence:${iterations},${master_seed}}
+      ++env.id: choice(Ant-v5, HalfCheetah-v5, HumanoidStandup-v5, Walker2d-v5, Hopper-v5)
+      ++seed: ${seed_sequence:${iterations},${master_seed}}
 # Experiments control for schedules, radius vs discount factor, bootstrap with shrink factor

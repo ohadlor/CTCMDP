@@ -2,10 +2,15 @@
 # sweep over schedules
 
 experiment_name: shrink_factor
+
+iterations: 10
+total_timesteps: 1_000_000
+agent:
+  boot_with_shrink_factor: true
+env:
+  radius: 0.1
+
 hydra:
   sweeper:
     params:
       agent: choice(tc_m2td3/vanilla, tc_m2td3/stacked, tc_m2td3/oracle, continual_td3/tc_m2td3)
-
-agent:
-  boot_with_shrink_factor: true

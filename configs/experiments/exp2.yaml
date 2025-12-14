@@ -1,10 +1,15 @@
 # @package _global_
-# Sweep over radius and sim discount factor
+# sweep over schedules
 
-experiment_name: discount_radius
+experiment_name: schedules
+
+iterations: 10
+total_timesteps: 1_000_000
+env:
+  radius: 0.1
+
 hydra:
   sweeper:
     params:
-      agent: choice(continual_discounted_td3/td3)
-      ++agent.radius: ${logspace:0.0001,0.5,10}
-      ++agent.model.sim_gamma: ${linspace:0,1,21}
+      schedule: choice(brownian, linear, sinusoidal, static)
+      agent: choice(td3, tc_m2td3/vanilla, tc_m2td3/stacked, tc_m2td3/oracle, continual_td3/clean, continual_td3/td3, continual_td3/tc_m2td3, continual_discounted_td3/clean, continual_discounted_td3/td3, continual_discounted_td3/tc_m2td3)

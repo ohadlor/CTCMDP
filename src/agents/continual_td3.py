@@ -1,6 +1,7 @@
 from typing import Optional
 
 import numpy as np
+from gymnasium import Env
 
 from src.agents.td3 import TD3
 from src.agents.continual_algorithm import make_continual_learner
@@ -50,6 +51,7 @@ class DiscountModelContinualTD3(ContinualTD3):
         sim_horizon: int = 1,
         sim_action_noise_std: float = 0.5,
         sim_buffer_size: int = 50_000,
+        current_episode_multiplier: float = 1,
         max_grad_norm: float = 10,
         *args,
         **kwargs,
@@ -62,7 +64,7 @@ class DiscountModelContinualTD3(ContinualTD3):
         if self.gamma is None:
             self.gamma = sim_gamma
         if sim_horizon >= 1:
-            self.replay_buffer = self._base_to_time_indexed_buffer(self.replay_buffer)
+            self.replay_buffer = self._base_to_time_indexed_buffer(self.replay_buffer, current_episode_multiplier)
 
         self.max_grad_norm = max_grad_norm
 
@@ -72,7 +74,7 @@ class DiscountModelContinualTD3(ContinualTD3):
         else:
             self.p_real = p_real
 
-        self._setup_sim(sim_gamma, sim_horizon, sim_action_noise_std, sim_buffer_size)
+        self._setup_sim(sim_gamma, sim_horizon, sim_action_noise_std, sim_buffer_size, current_episode_multiplier)
 
     def train(self, gradient_steps: int = 1, batch_size: int = 256) -> tuple[float, Optional[float]]:
         has_sim = self.stationary_env is not None and hasattr(self, "sim_replay_buffer")
@@ -107,7 +109,6 @@ class DiscountModelContinualTD3(ContinualTD3):
         """
         Add transitions to the simulation replay buffer.
         """
-        self.sim_replay_buffer.increment_time_indices()
         # Start rollout from the last true observation
         obs = self.last_obs
 
@@ -128,9 +129,12 @@ class DiscountModelContinualTD3(ContinualTD3):
 
             obs = next_obs
             if done:
-                break
+                continue
+        self.sim_replay_buffer.step_times()
 
-    def _setup_sim(self, gamma: float, horizon: int, action_noise_std: float, buffer_size: int):
+    def _setup_sim(
+        self, gamma: float, horizon: int, action_noise_std: float, buffer_size: int, current_episode_multiplier: float
+    ):
         """
         Setup the simulation environment.
 
@@ -153,11 +157,19 @@ class DiscountModelContinualTD3(ContinualTD3):
                 buffer_size * self.sim_horizon,
                 self.observation_space,
                 self.action_space,
-                beta=0.5,
+                current_episode_multiplier=current_episode_multiplier,
                 device=self.device,
                 rng=self.rng,
             )
             self.replay_buffers.append(self.sim_replay_buffer)
+            self.stationary_env = None
+            self.last_obs = None
+
+    def set_stationary_env(self, env: Env):
+        self.stationary_env = env
+
+    def update_stationary_env(self, env: Env):
+        self.stationary_env.copy_env(env)
 
     def loss_logger(self, losses: tuple[np.ndarray, np.ndarray], log_interval: int = 1):
         critic_loss, actor_loss = losses

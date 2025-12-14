@@ -1,6 +1,6 @@
 from typing import Optional, Any
-import copy
 
+import gymnasium as gym
 from gymnasium import Wrapper, Env
 from gymnasium import spaces
 import numpy as np
@@ -47,6 +47,7 @@ class RobustWrapper(Wrapper):
 
         # For domain randomization
         self.domain_space = domain_space
+        self.seed = seed
         self.rng = np.random.default_rng(seed)
 
     def _get_name_to_index_map(self, mujoco_attribute: str) -> list[str]:
@@ -200,6 +201,43 @@ class RobustWrapper(Wrapper):
         info.update(self.get_params())
         return obs, reward, terminated, truncated, info
 
+    def get_mujoco_state(self) -> dict:
+        """
+        Returns a dictionary containing the complete physical state of the environment.
+        """
+        mj_data = self.unwrapped.data
+
+        return {
+            "qpos": mj_data.qpos.copy(),
+            "qvel": mj_data.qvel.copy(),
+        }
+
+    def set_mujoco_state(self, mujoco_state: dict) -> None:
+        """
+        Loads a state snapshot into the environment.
+        """
+        mj_env = self.unwrapped
+        mj_env.set_state(mujoco_state["qpos"], mujoco_state["qvel"])
+
+    def copy_env_state(self, env: Env) -> None:
+        full_state = env.get_wrapper_attr("get_mujoco_state")()
+        self.set_mujoco_state(full_state)
+
+    def copy_env_hidden_state(self, env: Env) -> None:
+        env_params = env.get_wrapper_attr("get_params")()
+        self.set_params(env_params)
+
+    def copy_env(self, env: Env) -> None:
+        self.copy_env_state(env)
+        self.copy_env_hidden_state(env)
+
+    def make_env(self) -> Env:
+        env_id = self.unwrapped.spec.id
+        env = gym.make(env_id)
+        env = RobustWrapper(env)
+        env.reset(seed=self.seed)
+        return env
+
 
 class TCRMDP(Wrapper):
     """
@@ -245,19 +283,22 @@ class TCRMDP(Wrapper):
                 "hidden": hidden_action_space,
             }
         )
-        self.set_params = find_attribute_in_stack(self, "set_params")
-        self.get_params = find_attribute_in_stack(self, "get_params")
+        self._set_params = find_attribute_in_stack(self, "set_params")
+        self._get_params = find_attribute_in_stack(self, "get_params")
+        self._get_state = find_attribute_in_stack(self, "get_mujoco_state")
+        self._set_state = find_attribute_in_stack(self, "set_mujoco_state")
 
     @property
-    def state(self) -> spaces.Dict:
+    def state(self) -> dict:
         """
         The state of the environment, including the observed and hidden states.
         """
-        return {"observed": self.env.unwrapped.state, "hidden": self.hidden_state}
+        mujoco_state = self._get_state()
+        return {"observed": mujoco_state, "hidden": self.hidden_state}
 
     @state.setter
-    def state(self, full_state: spaces.Dict):
-        self.env.unwrapped.state = full_state["observed"]
+    def state(self, full_state: dict):
+        self._set_state(full_state["observed"])
         self.hidden_state = full_state["hidden"]
 
     @property
@@ -265,12 +306,12 @@ class TCRMDP(Wrapper):
         """
         The hidden state of the environment.
         """
-        params = self.get_params()
+        params = self._get_params()
         return np.array([params[key] for key in self.hidden_params])
 
     @hidden_state.setter
     def hidden_state(self, hidden_state: np.ndarray):
-        self.set_params(dict(zip(self.hidden_params, hidden_state)))
+        self._set_params(dict(zip(self.hidden_params, hidden_state)))
 
     def reset(self, *, seed=None, options=None):
         """
@@ -355,26 +396,6 @@ class TCRMDP(Wrapper):
         )
         return hidden_state
 
-    def copy_to_stationary_env(self) -> Env:
-        """
-        Creates a deep copy of the environment, sets a new hidden observation,
-        and returns a wrapped environment with simplified observation and action spaces.
-
-        Returns
-        -------
-        Env
-            A stationary version of the environment.
-        """
-        new_env = copy.deepcopy(self)
-
-        # Remove the recording wrapper if there is one
-        stationary_env = FrozenHiddenObservation(new_env)
-        # Designed for mujoco envs
-        position = self.unwrapped.data.qpos.flatten()
-        velocity = self.unwrapped.data.qvel.flatten()
-        stationary_env._base_state = (position, velocity)
-        return stationary_env
-
 
 class SplitActionObservationSpace(Wrapper):
     """
@@ -392,8 +413,6 @@ class SplitActionObservationSpace(Wrapper):
         self.action_space = env.action_space["observed"]
         self.hidden_observation_space = env.observation_space["hidden"]
         self.hidden_action_space = env.action_space["hidden"]
-
-        self.copy_to_stationary_env = env.copy_to_stationary_env
 
     def step(self, action: np.ndarray, hidden_action: Optional[np.ndarray] = None):
         """
@@ -447,64 +466,6 @@ class SplitActionObservationSpace(Wrapper):
         The hidden state of the environment.
         """
         return find_attribute_in_stack(self, "hidden_state")
-
-
-class FrozenHiddenObservation(Wrapper):
-    """
-    A wrapper that freezes the hidden state of the environment.
-
-    Parameters
-    ----------
-    env : TCRMDP
-        The TCRMDP environment to wrap.
-    """
-
-    def __init__(self, env: TCRMDP):
-        super().__init__(env)
-        self.observation_space = self.env.observation_space["observed"]
-        self.action_space = self.env.action_space["observed"]
-
-        self.hidden_state = self.env.hidden_state
-        self._base_state = None
-
-    def step(self, action: np.ndarray):
-        """
-        Performs a step in the environment.
-
-        Parameters
-        ----------
-        action : np.ndarray
-            The action to take in the observed action space.
-
-        Returns
-        -------
-        tuple
-            A tuple containing the new observation, the reward, whether the episode has terminated,
-            whether the episode has been truncated, and a dictionary of additional information.
-        """
-        dict_action = {"observed": action, "hidden": None}
-        obs, reward, terminated, truncated, info = self.env.step(dict_action)
-        return obs["observed"], reward, terminated, truncated, info
-
-    def reset(self, *, seed=None, options=None):
-        """
-        Resets the environment.
-
-        Parameters
-        ----------
-        seed : int, optional
-            The seed to use for the environment's random number generator, by default None.
-        options : dict, optional
-            A dictionary of options for the environment, by default None.
-
-        Returns
-        -------
-        tuple
-            A tuple containing the initial observation and a dictionary of additional information.
-        """
-        obs, info = self.env.reset(seed=seed, options=options)
-
-        return obs["observed"], info
 
 
 class BernoulliTruncation(Wrapper):

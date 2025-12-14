@@ -7,16 +7,13 @@ defaults:
 
 master_seed: 2671232903
 seed: ${master_seed}
+experiment_name: trial
 
 iterations: 1
-total_timesteps: 200
-agent:
-  model:
-    learning_starts: 100
+total_timesteps: 200_000
 env:
-  id: HalfCheetah-v5
   domain_randomization: true
-  radius: 0.01
+  radius: 0.1
 
 num_gpus: 1 # Total physical GPUs available
 parallel_task: 1
@@ -27,9 +24,12 @@ hydra:
     n_jobs: ${parallel_task}
   sweep:
     dir: outputs/${experiment_name}
-    subdir: ${custom_dir:${agent},${env},${schedule}}
+    subdir: ${custom_dir:${agent},${env},${schedule}}_${agent.model.sim_gamma}_${agent.model.current_episode_multiplier}
   sweeper:
     params:
       # env.id: choice(Ant-v5, HalfCheetah-v5, HumanoidStandup-v5, Walker2d-v5, Hopper-v5)
-      env.id: choice(HalfCheetah-v5)
-      seed: ${seed_sequence:${iterations},${master_seed}}
+      ++env.id: choice(HalfCheetah-v5)
+      ++seed: ${seed_sequence:${iterations},${master_seed}}
+      agent: choice(continual_discounted_td3/td3)
+      agent.model.sim_gamma: choice(0.75,0.8,0.85)
+      # agent.model.current_episode_multiplier: choice(0,5,10,20,50)

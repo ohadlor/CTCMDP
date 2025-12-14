@@ -57,13 +57,14 @@ class TCM2TD3(BaseAlgorithm):
         actor_path: Optional[str] = None,
         device: Union[th.device, str] = "auto",
         tensorboard_log: str = "runs",
+        checkpoint_path: Optional[str] = None,
         seed: Optional[int] = None,
     ):
         # Action and state spaces are split into hidden and not hidden
         self.hidden_observation_space = env.hidden_observation_space
         self.hidden_action_space = env.hidden_action_space
 
-        super().__init__(env.observation_space, env.action_space, lr, device, seed, tensorboard_log)
+        super().__init__(env.observation_space, env.action_space, lr, device, seed, tensorboard_log, checkpoint_path)
         self.env = env
         self.replay_buffer = HiddenReplayBuffer(
             buffer_size,
@@ -337,7 +338,7 @@ class TCM2TD3(BaseAlgorithm):
 
             # Checkpoint agent every 5e5 steps
             if num_timesteps % 5e5 == 0:
-                self.save(self.logger.get_logdir() + f"/model_{num_timesteps}.pth")
+                self.save(self.checkpoint_path + f"/{num_timesteps}.pth")
 
         return
 

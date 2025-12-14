@@ -3,5 +3,5 @@ defaults:
   - _self_
 
 model:
-  learning_starts: 0
+  learning_starts: 1000
 bootstrap: TD3
