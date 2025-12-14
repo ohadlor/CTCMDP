@@ -1,3 +1,4 @@
 model:
   _target_: src.agents.continual_td3.ContinualTD3
   gamma: 0.99
+bootstrap_step: 4_000_000

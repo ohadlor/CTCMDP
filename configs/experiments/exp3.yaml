@@ -6,7 +6,7 @@ experiment_name: shrink_factor
 iterations: 10
 total_timesteps: 1_000_000
 agent:
-  boot_with_shrink_factor: true
+  boot_with_shrink_factor: 0.25
 env:
   radius: 0.1
 

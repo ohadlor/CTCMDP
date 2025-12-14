@@ -1,3 +1,4 @@
 model:
   _target_: src.agents.td3.TD3
 bootstrap: TD3
+bootstrap_step: 5_000_000

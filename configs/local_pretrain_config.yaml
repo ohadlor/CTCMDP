@@ -5,13 +5,14 @@ defaults:
   - _self_
 
 seed: 2671232903
-total_timesteps: 5e5
+total_timesteps: 1e3
 experiment_name: 0
 agent:
   model:
     learning_starts: 0
 env:
   id: HalfCheetah-v5
+  shrink_factor: 0.25
 
 num_gpus: 1 # Total physical GPUs available
 parallel_task: 1
@@ -26,4 +27,4 @@ hydra:
   sweeper:
     params:
       # env.id: choice(Ant-v5, HalfCheetah-v5, HumanoidStandup-v5, Walker2d-v5, Hopper-v5)
-      agent: choice(td3, tc_m2td3/vanilla, tc_m2td3/stacked, tc_m2td3/oracle)
+      agent: choice(td3)

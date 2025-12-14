@@ -22,10 +22,16 @@ def set_torch_gpu(job_num: int, n_gpus: int = 1):
 
 def update_bootstrap_path(agent_params: dict, cfg: DictConfig) -> dict:
     env_name = cfg.env.id.split("-")[0]
+    boot_step = f"_{cfg.agent.bootstrap_step}.pth"
     if cfg.agent.get("bootstrap", None) is not None:
-        agent_params["actor_path"] = os.path.join("pretrained_models", env_name, cfg.agent.bootstrap + ".pth")
-        if cfg.agent.get("boot_with_shrink_factor", False):
-            agent_params["actor_path"] = agent_params["actor_path"].removesuffix(".pth") + "_shrink.pth"
+        agent_params["actor_path"] = os.path.join("pretrained_models", env_name, cfg.agent.bootstrap + boot_step)
+        boot_shrink_factor = cfg.agent.get("boot_with_shrink_factor", False)
+        if boot_shrink_factor:
+            agent_params["actor_path"] = (
+                agent_params["actor_path"].removesuffix(boot_step)
+                + f"_shrink-{str(boot_shrink_factor).replace('.', '')}"
+                + boot_step
+            )
         if "continual" in cfg.agent.model._target_:
-            agent_params["critic_path"] = os.path.join("pretrained_models", env_name, "TD3" + ".pth")
+            agent_params["critic_path"] = os.path.join("pretrained_models", env_name, "TD3" + boot_step)
     return agent_params

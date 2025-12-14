@@ -1,3 +1,4 @@
 model:
   _target_: src.agents.tc_m2td3.TCM2TD3
 radius: 0.001 # For pretraining
+bootstrap_step: 5_000_000

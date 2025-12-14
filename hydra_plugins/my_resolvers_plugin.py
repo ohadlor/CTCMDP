@@ -50,8 +50,9 @@ def custom_dir_resolver(agent_cfg: DictConfig, env_cfg: DictConfig, schedule_cfg
         run_name += f"_simdiscount-{sim_gamma}"
 
     # Add shrink factor if used (currently binary)
-    shrink_factor = int(10 * agent_cfg.get("shrink_factor", 0))
-    if shrink_factor or agent_cfg.get("boot_with_shrink_factor", False):
+    shrink_factor = agent_cfg.get("shrink_factor", 0)
+    boot_shrink_factor = agent_cfg.get("boot_with_shrink_factor", False)
+    if shrink_factor or boot_shrink_factor:
         run_name += "_shrink"
 
     # If in test, add bootstrap source

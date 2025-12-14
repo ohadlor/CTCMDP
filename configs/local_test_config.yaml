@@ -14,6 +14,8 @@ total_timesteps: 200_000
 env:
   domain_randomization: true
   radius: 0.1
+agent:
+  boot_with_shrink_factor: 0.25
 
 num_gpus: 1 # Total physical GPUs available
 parallel_task: 1
