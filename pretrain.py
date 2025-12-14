@@ -35,7 +35,20 @@ def main(cfg: DictConfig):
     env_name = cfg.env.id.split("-")[0]
     env = create_env(cfg)
 
-    agent_params = {"seed": cfg.seed, "env": env, "tensorboard_log": output_dir}
+    # Checkpoint path
+    save_path = f"pretrained_models/{env_name}/"
+    agent_name = ""
+    if cfg.agent.get("variant", None) is not None:
+        agent_name += f"_{cfg.agent.variant}"
+    agent_name += f"_{cfg.agent.model._target_.split('.')[-1]}"
+    agent_name = agent_name[1:]
+    shrink_factor = cfg.env.get("shrink_factor", 0)
+    if shrink_factor > 0:
+        agent_name += f"_shrink-{shrink_factor}".replace(".", "")
+    save_path += agent_name
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+    agent_params = {"seed": cfg.seed, "env": env, "tensorboard_log": output_dir, "checkpoint_path": save_path}
     agent: BaseAlgorithm = hydra.utils.instantiate(cfg.agent.model, **agent_params, _convert_="all")
 
     setup_string = (
@@ -45,19 +58,6 @@ def main(cfg: DictConfig):
         setup_string += f", variant: {cfg.agent.variant}"
     print(setup_string)
     agent.learn(total_timesteps=int(cfg.total_timesteps))
-
-    print("Training finished. Saving model...")
-    save_path = f"pretrained_models/{env_name}/"
-    agent_name = ""
-    if cfg.agent.get("variant", None) is not None:
-        agent_name += f"_{cfg.agent.variant}"
-    agent_name += f"_{cfg.agent.model._target_.split('.')[-1]}"
-    agent_name = agent_name[1:]
-    if cfg.env.get("shrink_factor", 0) > 0:
-        agent_name += "_shrink"
-    save_path += agent_name + ".pth"
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    agent.save(save_path)
 
     print("Evaluation...")
     mean_reward, std_reward = evaluate_policy(agent, env, n_eval_episodes=10, seed=cfg.seed)
