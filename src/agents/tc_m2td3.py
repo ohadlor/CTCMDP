@@ -338,7 +338,7 @@ class TCM2TD3(BaseAlgorithm):
 
             # Checkpoint agent every 5e5 steps
             if num_timesteps % 5e5 == 0:
-                self.save(self.checkpoint_path + f"/{num_timesteps}.pth")
+                self.save(self.checkpoint_path + f"_{num_timesteps}.pth")
 
         return
 

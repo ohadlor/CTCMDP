@@ -64,8 +64,8 @@ def evaluate_policy(
     # If robust alg, evaluate on the stationary env
     if check_for_wrapper(env, TCRMDP):
         env.reset(seed=seed)
-        env = env.copy_to_stationary_env()
-        hidden_state = env.hidden_state
+        env = env.get_wrapper_attr("make_env")()
+        hidden_state = np.array(list(env.get_params().values()))
 
     for i in range(n_eval_episodes):
         episode_rewards = []
