@@ -4,6 +4,7 @@ import numpy as np
 import torch as th
 from gymnasium import Env
 from torch.nn import functional as F
+from torch.amp import GradScaler, autocast
 
 from src.buffers import HiddenReplayBuffer
 from src.common.utils import polyak_update
@@ -35,6 +36,7 @@ class TCM2TD3(BaseAlgorithm):
     :param device: The device to use for training.
     :param tensorboard_log: The path to the tensorboard log directory.
     :param seed: The seed for the random number generator.
+    :param use_amp: Whether to use automatic mixed precision.
     """
 
     def __init__(
@@ -97,6 +99,7 @@ class TCM2TD3(BaseAlgorithm):
             self._load_actor(actor_path)
 
         self._n_updates = 0
+        self.scaler = GradScaler()
 
     def _setup_model(self):
         self.policy = M2TD3Policy(
@@ -137,63 +140,72 @@ class TCM2TD3(BaseAlgorithm):
             replay_data = self.replay_buffer.sample(batch_size)
 
             # Train critic
-            with th.no_grad():
-                noise = replay_data.actions.clone().data.normal_(0, self.target_policy_noise)
-                noise = noise.clamp(-self.target_noise_clip, self.target_noise_clip)
-                hidden_noise = replay_data.hidden_states.clone().data.normal_(0, self.target_policy_noise)
-                hidden_noise = hidden_noise.clamp(-self.target_noise_clip, self.target_noise_clip)
+            with autocast(device_type=self.device):
+                with th.no_grad():
+                    noise = (th.rand_like(replay_data.actions) * self.target_policy_noise).clamp(
+                        -self.target_noise_clip, self.target_noise_clip
+                    )
+                    hidden_noise = (th.rand_like(replay_data.hidden_states) * self.target_policy_noise).clamp(
+                        -self.target_noise_clip, self.target_noise_clip
+                    )
 
-                next_actions = (self.actor_target(replay_data.next_observations) + noise).clamp(-1, 1)
-                next_adversary_obs = self.policy.concat_obs_adversary(
-                    replay_data.next_observations, replay_data.next_hidden_states, next_actions
-                )
-                next_hidden_actions = (self.adversary_target(next_adversary_obs) + hidden_noise).clamp(-1, 1)
+                    next_actions = (self.actor_target(replay_data.next_observations) + noise).clamp(-1, 1)
+                    next_adversary_obs = self.policy.concat_obs_adversary(
+                        replay_data.next_observations, replay_data.next_hidden_states, next_actions
+                    )
+                    next_hidden_actions = (self.adversary_target(next_adversary_obs) + hidden_noise).clamp(-1, 1)
 
-                # Next_hidden_state is a sufficient statistic for (hidden_state, hidden_action)
-                next_next_hidden_states = self.policy.predict_hidden_state(
-                    next_hidden_actions, replay_data.next_hidden_states
-                )
+                    # Next_hidden_state is a sufficient statistic for (hidden_state, hidden_action)
+                    next_next_hidden_states = self.policy.predict_hidden_state(
+                        next_hidden_actions, replay_data.next_hidden_states
+                    )
 
-                critic_obs = self.policy.concat_obs_critic(replay_data.next_observations, next_next_hidden_states)
-                next_q_values = th.cat(self.critic_target(critic_obs, next_actions), dim=1)
-                next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
-                target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
+                    critic_obs = self.policy.concat_obs_critic(replay_data.next_observations, next_next_hidden_states)
+                    next_q_values = th.cat(self.critic_target(critic_obs, next_actions), dim=1)
+                    next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
+                    target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
 
-            critic_obs = self.policy.concat_obs_critic(replay_data.observations, replay_data.next_hidden_states)
-            current_q_values = self.critic(critic_obs, replay_data.actions)
-            critic_loss = sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
-            critic_losses.append(critic_loss.item())
+                    critic_obs = self.policy.concat_obs_critic(replay_data.observations, replay_data.next_hidden_states)
+                    current_q_values = self.critic(critic_obs, replay_data.actions)
+                    critic_loss = sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
+                critic_losses.append(critic_loss.item())
 
             self.critic_optimizer.zero_grad()
-            critic_loss.backward()
-            self.critic_optimizer.step()
+            self.scaler.scale(critic_loss).backward()
+            self.scaler.step(self.critic_optimizer)
 
-            if self._n_updates % self.policy_delay == 0:
+            agent_update = self._n_updates % self.policy_delay == 0
+            if agent_update:
                 # Train agent
-                agent_obs = self.policy.concat_obs_actor(replay_data.observations, replay_data.hidden_states)
-                agent_actions = self.actor(agent_obs)
-                critic_obs = self.policy.concat_obs_critic(replay_data.observations, replay_data.next_hidden_states)
-                agent_loss = -self.critic.q1_forward(critic_obs, agent_actions).mean()
-                actor_losses.append(agent_loss.item())
+                with autocast(device_type=self.device):
+                    agent_obs = self.policy.concat_obs_actor(replay_data.observations, replay_data.hidden_states)
+                    agent_actions = self.actor(agent_obs)
+                    critic_obs = self.policy.concat_obs_critic(replay_data.observations, replay_data.next_hidden_states)
+                    agent_loss = -self.critic.q1_forward(critic_obs, agent_actions).mean()
+                    actor_losses.append(agent_loss.item())
 
                 self.actor_optimizer.zero_grad()
-                agent_loss.backward()
-                self.actor_optimizer.step()
+                self.scaler.scale(agent_loss).backward()
+                self.scaler.step(self.actor_optimizer)
 
                 # Train adversary
-                adversary_obs = self.policy.concat_obs_adversary(
-                    replay_data.observations, replay_data.hidden_states, replay_data.actions
-                )
-                hidden_actions = self.adversary(adversary_obs)
-                next_hidden_states = self.policy.predict_hidden_state(hidden_actions, replay_data.hidden_states)
-                critic_obs = self.policy.concat_obs_critic(replay_data.observations, next_hidden_states)
-                adversary_loss = self.critic.q1_forward(critic_obs, replay_data.actions).mean()
-                adversary_losses.append(adversary_loss.item())
+                with autocast(device_type=self.device):
+                    adversary_obs = self.policy.concat_obs_adversary(
+                        replay_data.observations, replay_data.hidden_states, replay_data.actions
+                    )
+                    hidden_actions = self.adversary(adversary_obs)
+                    next_hidden_states = self.policy.predict_hidden_state(hidden_actions, replay_data.hidden_states)
+                    critic_obs = self.policy.concat_obs_critic(replay_data.observations, next_hidden_states)
+                    adversary_loss = self.critic.q1_forward(critic_obs, replay_data.actions).mean()
+                    adversary_losses.append(adversary_loss.item())
 
                 self.adversary_optimizer.zero_grad()
-                adversary_loss.backward()
-                self.adversary_optimizer.step()
+                self.scaler.scale(adversary_loss).backward()
+                self.scaler.step(self.adversary_optimizer)
 
+            self.scaler.update()
+
+            if agent_update:
                 polyak_update(self.actor.parameters(), self.actor_target.parameters(), self.tau)
                 polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
                 polyak_update(self.adversary.parameters(), self.adversary_target.parameters(), self.tau)

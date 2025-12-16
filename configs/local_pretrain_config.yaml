@@ -5,11 +5,10 @@ defaults:
   - _self_
 
 seed: 2671232903
-total_timesteps: 1e3
-experiment_name: 0
+total_timesteps: 1e6
 agent:
   model:
-    learning_starts: 0
+    learning_starts: 10_000
 env:
   id: HalfCheetah-v5
   shrink_factor: 0.25
@@ -27,4 +26,4 @@ hydra:
   sweeper:
     params:
       # env.id: choice(Ant-v5, HalfCheetah-v5, HumanoidStandup-v5, Walker2d-v5, Hopper-v5)
-      agent: choice(tc_m2td3/vanilla)
+      agent: choice(td3, tc_m2td3/vanilla)

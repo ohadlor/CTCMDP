@@ -4,6 +4,7 @@ import numpy as np
 import torch as th
 from gymnasium import Env
 from torch.nn import functional as F
+from torch.amp import GradScaler, autocast
 
 from src.buffers.replay_buffer import BaseBuffer, BaseReplayBufferSamples
 from src.common.noise import NormalActionNoise
@@ -34,6 +35,7 @@ class TD3(BaseAlgorithm):
     :param tensorboard_log: The path to the tensorboard log directory.
     :param actor_path: The path to a pretrained actor.
     :param seed: The seed for the random number generator.
+    :param use_amp: Whether to use automatic mixed precision.
     """
 
     def __init__(
@@ -90,6 +92,7 @@ class TD3(BaseAlgorithm):
             self._load_critic(critic_path)
 
         self._make_aliases()
+        self.scaler = GradScaler(self.device)
 
     def _setup_model(self):
         self.policy = TD3Policy(
@@ -109,32 +112,41 @@ class TD3(BaseAlgorithm):
 
     def update(self, replay_data: BaseReplayBufferSamples, gamma: float) -> tuple[float, Optional[float]]:
         actor_loss = None
-        with th.no_grad():
-            # Target actions  with clipped noise
-            noise = replay_data.actions.clone().data.normal_(0, self.target_policy_noise)
-            noise = noise.clamp(-self.target_noise_clip, self.target_noise_clip)
-            next_actions = (self.actor_target(replay_data.next_observations) + noise).clamp(-1, 1)
+        with autocast(device_type=self.device):
+            with th.no_grad():
+                # Target actions  with clipped noise
+                noise = (th.rand_like(replay_data.actions) * self.target_policy_noise).clamp(
+                    -self.target_noise_clip, self.target_noise_clip
+                )
+                next_actions = (self.actor_target(replay_data.next_observations) + noise).clamp(-1, 1)
 
-            # Compute target
-            next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
-            next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
-            target_q_values = replay_data.rewards + (1 - replay_data.dones) * gamma * next_q_values
+                # Compute target
+                next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
+                next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
+                target_q_values = replay_data.rewards + (1 - replay_data.dones) * gamma * next_q_values
 
-        # Calculate critic loss
-        current_q_values = self.critic(replay_data.observations, replay_data.actions)
-        critic_loss = sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
+            # Calculate critic loss
+            current_q_values = self.critic(replay_data.observations, replay_data.actions)
+            critic_loss = sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
 
         self.critic_optimizer.zero_grad()
-        critic_loss.backward()
-        self.critic_optimizer.step()
+        self.scaler.scale(critic_loss).backward()
+        self.scaler.step(self.critic_optimizer)
 
-        if self._n_updates % self.policy_delay == 0:
+        actor_update = self._n_updates % self.policy_delay == 0
+        if actor_update:
             # Calculate actor loss
-            actor_loss = -self.critic.q1_forward(replay_data.observations, self.actor(replay_data.observations)).mean()
+            with autocast(device_type=self.device):
+                actor_loss = -self.critic.q1_forward(
+                    replay_data.observations, self.actor(replay_data.observations)
+                ).mean()
             self.actor_optimizer.zero_grad()
-            actor_loss.backward()
-            self.actor_optimizer.step()
+            self.scaler.scale(actor_loss).backward()
+            self.scaler.step(self.actor_optimizer)
 
+        self.scaler.update()
+
+        if actor_update:
             polyak_update(self.actor.parameters(), self.actor_target.parameters(), self.tau)
             polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
 

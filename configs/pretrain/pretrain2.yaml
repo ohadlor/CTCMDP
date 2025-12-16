@@ -2,7 +2,7 @@
 # Pretrain with shrink factor
 env:
   shrink_factor: 0.25
-experiment_name: 025
+experiment_name: "025"
 
 hydra:
   mode: MULTIRUN
