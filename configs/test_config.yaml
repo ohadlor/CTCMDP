@@ -9,7 +9,7 @@ master_seed: 1568068674
 seed: ${master_seed}
 
 num_gpus: 6 # Total physical GPUs available
-parallel_task: 100
+parallel_task: 200
 
 env:
   domain_randomization: true
