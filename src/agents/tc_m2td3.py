@@ -165,9 +165,9 @@ class TCM2TD3(BaseAlgorithm):
                     next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
                     target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
 
-                    critic_obs = self.policy.concat_obs_critic(replay_data.observations, replay_data.next_hidden_states)
-                    current_q_values = self.critic(critic_obs, replay_data.actions)
-                    critic_loss = sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
+                critic_obs = self.policy.concat_obs_critic(replay_data.observations, replay_data.next_hidden_states)
+                current_q_values = self.critic(critic_obs, replay_data.actions)
+                critic_loss = sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
                 critic_losses.append(critic_loss.item())
 
             self.critic_optimizer.zero_grad()
