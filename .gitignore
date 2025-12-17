@@ -68,7 +68,7 @@ ipython_config.py
 
 # Outputs
 outputs/
-pretrained_models/
+pretrained_models*
 
 # Environments
 .env

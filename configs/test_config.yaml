@@ -1,5 +1,5 @@
 defaults:
-  - agent: pretrained_continual_td3/td3
+  - agent: continual_td3/td3
   - schedule: brownian
   - experiments: null
   - override hydra/launcher: joblib

@@ -26,4 +26,4 @@ hydra:
   sweeper:
     params:
       # env.id: choice(Ant-v5, HalfCheetah-v5, HumanoidStandup-v5, Walker2d-v5, Hopper-v5)
-      agent: choice(td3, tc_m2td3/vanilla)
+      agent: choice(tc_m2td3/vanilla)
