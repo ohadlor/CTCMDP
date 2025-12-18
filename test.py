@@ -5,7 +5,7 @@ import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 
-from src.common.managment import set_torch_gpu, update_bootstrap_path
+from src.common.managment import set_torch_gpu, update_bootstrap_path, set_affinity
 
 
 @hydra.main(config_path="configs", config_name="local_test_config", version_base=None)
@@ -20,23 +20,25 @@ def main(cfg: DictConfig):
     """
 
     # Force single threading to keep parallel jobs from overlapping
-    MIN_THREADS = cfg.min_threads
-    for env_var in [
-        "OMP_NUM_THREADS",
-        "MKL_NUM_THREADS",
-        "OPENBLAS_NUM_THREADS",
-        "VECLIB_MAXIMUM_THREADS",
-        "NUMEXPR_NUM_THREADS",
-    ]:
-        os.environ[env_var] = str(MIN_THREADS)
+    MAX_THREADS = cfg.get("max_threads", None)
+    if MAX_THREADS:
+        for env_var in [
+            "OMP_NUM_THREADS",
+            "MKL_NUM_THREADS",
+            "OPENBLAS_NUM_THREADS",
+            "VECLIB_MAXIMUM_THREADS",
+            "NUMEXPR_NUM_THREADS",
+        ]:
+            os.environ[env_var] = str(MAX_THREADS)
+        import torch as th
+
+        th.set_num_threads(MAX_THREADS)
 
     hydra_cfg = HydraConfig.get()
     job_id = hydra_cfg.job.get("num", None)
     if job_id is not None:
         set_torch_gpu(job_id, cfg.num_gpus)
-    import torch as th
-
-    th.set_num_threads(MIN_THREADS)
+        set_affinity(job_id, MAX_THREADS)
 
     # Imports in main to make multiprocessing easier, and after setting gpu
     from src.agents.td3 import TD3

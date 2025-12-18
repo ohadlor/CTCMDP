@@ -20,6 +20,7 @@ dependencies = [
     "torch",
     "hydra-joblib-launcher",
     "joblib",
+    "psutil",
 ]
 
 

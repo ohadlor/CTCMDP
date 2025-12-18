@@ -9,7 +9,7 @@ master_seed: 2671232903
 seed: ${master_seed}
 experiment_name: trial
 
-iterations: 2
+iterations: 1
 total_timesteps: 100_000
 env:
   domain_randomization: true
@@ -17,7 +17,7 @@ env:
 
 num_gpus: 1 # Total physical GPUs available
 parallel_task: 1
-min_threads: 2
+max_threads: 2
 
 hydra:
   mode: MULTIRUN
@@ -33,4 +33,4 @@ hydra:
       ++seed: ${seed_sequence:${iterations},${master_seed}}
       agent: choice(continual_discounted_td3/td3)
       # agent.model.sim_gamma: choice(0.75,0.8,0.85)
-      agent.model.current_episode_multiplier: choice(0,5,10,20,50)
+      # agent.model.current_episode_multiplier: choice(0,5,10,20,50)
