@@ -10,7 +10,7 @@ seed: ${master_seed}
 
 num_gpus: 6 # Total physical GPUs available
 parallel_task: 120
-max_threads: 2
+# max_threads: 2
 
 env:
   domain_randomization: true
@@ -29,10 +29,5 @@ hydra:
   # Experiments control for schedules, radius vs discount factor, bootstrap with shrink factor
   job:
     env_set:
-      # Limit threads per job
-      OMP_NUM_THREADS: "2"
-      MKL_NUM_THREADS: "2"
-      OMP_PROC_BIND: "close"
-      OMP_PLACES: "cores"
       # Set GPU ID per job
       CUDA_VISIBLE_DEVICES: "${modulus:${hydra:job.num},6}"

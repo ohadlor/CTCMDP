@@ -173,7 +173,7 @@ def evaluate_policy_hidden_state(
             total_time = time.time() - start_time
             start_time = time.time()
             logger.add_scalar("rollout/avg_rew", np.mean(iter_rewards), current_step)
-            logger.add_scalar(f"rollout/avg_time_per_last_{logging_freq}_step", total_time / logging_freq, current_step)
+            logger.add_scalar(f"time/avg_per_last_{logging_freq}_step", total_time / logging_freq, current_step)
 
         # Handle episode termination
         done = terminated or truncated
