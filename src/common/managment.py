@@ -23,14 +23,10 @@ def set_torch_gpu(job_num: int, n_gpus: int = 1):
 
 def set_affinity(job_id: int, cores_per_job: int):
 
-    # Designed for specific server architecture
-    n_nodes = psutil.cpu_count(logical=False)
-    print(f"Found {n_nodes} nodes")
-    if n_nodes != 2:
-        return
     # 2. Define your specific 2-Node hardware map
     # Node 0: 0-63 and 128-191
     # Node 1: 64-127 and 192-255
+    n_nodes = 2
     node0_pool = list(range(0, 64)) + list(range(128, 192))
     node1_pool = list(range(64, 128)) + list(range(192, 256))
 
