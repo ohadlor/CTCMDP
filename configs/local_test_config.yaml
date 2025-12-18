@@ -34,3 +34,10 @@ hydra:
       agent: choice(continual_discounted_td3/td3)
       # agent.model.sim_gamma: choice(0.75,0.8,0.85)
       # agent.model.current_episode_multiplier: choice(0,5,10,20,50)
+  job:
+    env_set:
+      # Limit threads per job
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      # Set GPU ID per job
+      CUDA_VISIBLE_DEVICES: "${modulus:${hydra:job.num},1}"

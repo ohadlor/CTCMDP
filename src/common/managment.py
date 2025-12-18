@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 
 import psutil
 from omegaconf import DictConfig
@@ -22,10 +21,7 @@ def set_torch_gpu(job_num: int, n_gpus: int = 1):
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
 
 
-def set_affinity(job_id: int, cores_per_job: Optional[int] = None):
-    # 1. Exit early if no restriction is requested
-    if cores_per_job is None:
-        return
+def set_affinity(job_id: int, cores_per_job: int):
 
     # Designed for specific server architecture
     n_nodes = psutil.cpu_count(logical=False)

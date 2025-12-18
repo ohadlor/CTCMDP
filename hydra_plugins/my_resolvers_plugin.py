@@ -70,6 +70,10 @@ def floor_div_resolver(a: float, b: float) -> int:
     return a // b
 
 
+def modulus_resolver(a, b):
+    return int(a) % int(b)
+
+
 def seed_sequence_resolver(n: int, entropy: int) -> str:
     seed_sequence = np.random.SeedSequence(entropy)
     seeds = seed_sequence.generate_state(n)
@@ -94,6 +98,7 @@ resolvers = {
     "custom_dir": custom_dir_resolver,
     "linspace": linspace_resolver,
     "logspace": logspace_resolver,
+    "modulus": modulus_resolver,
 }
 for resolver_name, resolver in resolvers.items():
     if not OmegaConf.has_resolver(resolver_name):

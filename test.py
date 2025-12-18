@@ -5,7 +5,7 @@ import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 
-from src.common.managment import set_torch_gpu, update_bootstrap_path, set_affinity
+from src.common.managment import update_bootstrap_path, set_affinity
 
 
 @hydra.main(config_path="configs", config_name="local_test_config", version_base=None)
@@ -24,19 +24,9 @@ def main(cfg: DictConfig):
 
     hydra_cfg = HydraConfig.get()
     job_id = hydra_cfg.job.get("num", None)
-    if job_id is not None:
-        set_torch_gpu(job_id, cfg.num_gpus)
+    if job_id is not None and MAX_THREADS is not None:
         set_affinity(job_id, MAX_THREADS)
 
-    if MAX_THREADS:
-        for env_var in [
-            "OMP_NUM_THREADS",
-            "MKL_NUM_THREADS",
-            "OPENBLAS_NUM_THREADS",
-            "VECLIB_MAXIMUM_THREADS",
-            "NUMEXPR_NUM_THREADS",
-        ]:
-            os.environ[env_var] = str(MAX_THREADS)
         import torch as th
 
         th.set_num_threads(MAX_THREADS)
