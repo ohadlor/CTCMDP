@@ -95,7 +95,7 @@ def make_continual_learner(
         def learn(
             self,
             observation: np.ndarray,
-            log_interval: int = 100,
+            log_interval: int = 1000,
         ):
             """Learning function for use during evaluation for continual learning
 
