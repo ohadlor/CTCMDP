@@ -217,7 +217,7 @@ class TD3(BaseAlgorithm):
     def learn(
         self,
         total_timesteps: int,
-        log_interval: int = 1,
+        log_interval: int = 100,
     ):
         """
         Train the agent for a given number of timesteps.

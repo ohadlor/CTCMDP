@@ -5,7 +5,7 @@ model:
   sim_horizon: 1
   sim_buffer_size: 1_000_000
   p_real: 0
-  current_episode_multiplier: 0
+  current_episode_multiplier: 5
 bootstrap_step:
   4_000_000
 

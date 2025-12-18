@@ -20,6 +20,7 @@ def main(cfg: DictConfig):
     """
 
     # Force single threading to keep parallel jobs from overlapping
+    MIN_THREADS = 2
     for env_var in [
         "OMP_NUM_THREADS",
         "MKL_NUM_THREADS",
@@ -27,14 +28,15 @@ def main(cfg: DictConfig):
         "VECLIB_MAXIMUM_THREADS",
         "NUMEXPR_NUM_THREADS",
     ]:
-        os.environ[env_var] = "1"
+        os.environ[env_var] = str(MIN_THREADS)
 
     hydra_cfg = HydraConfig.get()
     job_id = hydra_cfg.job.get("num", None)
     if job_id is not None:
         set_torch_gpu(job_id, cfg.num_gpus)
     import torch as th
-    th.set_num_threads(1)
+    th.set_num_threads(MIN_THREADS)
+
     # Imports in main to make multiprocessing easier, and after setting gpu
     from src.agents.td3 import TD3
     from src.environments import create_env

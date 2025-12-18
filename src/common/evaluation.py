@@ -17,6 +17,7 @@ def evaluate_policy(
     callback: Optional[Callable[[dict[str, Any], dict[str, Any]], None]] = None,
     average_reward: bool = False,
     seed: Optional[int] = None,
+    logging_freq: int = 1000,
 ) -> np.ndarray:
     """
     Evaluates the policy of a model in a given Gymnasium environment.
@@ -111,6 +112,7 @@ def evaluate_policy_hidden_state(
     env: gym.Env,
     adversary_policy: Optional[BaseActionSchedule],
     total_timesteps: int,
+    logging_freq: int = 1000,
 ):
     is_continual_learner = getattr(model, "is_continual_learner", False)
 
@@ -163,8 +165,8 @@ def evaluate_policy_hidden_state(
 
         iter_rewards.append(reward)
         ep_rewards.append(reward)
-        logger.add_scalar("rollout/avg_rew", np.mean(iter_rewards), current_step)
-        logger.add_scalar("rollout/rew", reward, current_step)
+        if current_step % logging_freq == 0:
+            logger.add_scalar("rollout/avg_rew", np.mean(iter_rewards), current_step)
 
         # Handle episode termination
         done = terminated or truncated
