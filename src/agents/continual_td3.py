@@ -80,13 +80,16 @@ class DiscountModelContinualTD3(ContinualTD3):
         self._setup_sim(sim_gamma, sim_horizon, sim_action_noise_std, sim_buffer_size, current_episode_multiplier)
 
     def train(self, gradient_steps: int = 1, batch_size: int = 256) -> tuple[float, Optional[float]]:
+        tf = 0
         has_sim = self.stationary_env is not None and hasattr(self, "sim_replay_buffer")
         if has_sim:
+            t1 = time.time()
             self._add_to_sim_buffer()
+            tf += time.time() - t1
 
         self.policy.set_training_mode(True)
         actor_losses, critic_losses = [], []
-        tf = 0
+
         for _ in range(gradient_steps):
             self._n_updates += 1
             # Select real or simulated data, use real or sim discont factor
@@ -98,9 +101,9 @@ class DiscountModelContinualTD3(ContinualTD3):
             else:
                 replay_data = self.sim_replay_buffer.sample(batch_size)
                 gamma = self.sim_gamma
-            t1 = time.time()
+
             critic_loss, actor_loss = self.update(replay_data, gamma)
-            tf += time.time() - t1
+
             critic_losses.append(critic_loss)
             if actor_loss is not None:
                 actor_losses.append(actor_loss)

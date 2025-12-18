@@ -121,7 +121,6 @@ def evaluate_policy_hidden_state(
 
     ep_rewards = []
     iter_rewards = []
-    step_times = []
     observation, hidden_state, _ = env.reset(seed=seed)
 
     if adversary_policy is not None:
@@ -145,7 +144,6 @@ def evaluate_policy_hidden_state(
 
         # Step env
         next_observation, next_hidden_state, reward, terminated, truncated, _ = env.step(action, hidden_action)
-        step_times.append(time.time() - start_time)
 
         if getattr(model, "oracle_actor", False):
             next_observation = np.concatenate([next_observation, next_hidden_state])
