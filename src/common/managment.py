@@ -25,6 +25,7 @@ def set_affinity(job_id: int, cores_per_job: int):
 
     # Designed for specific server architecture
     n_nodes = psutil.cpu_count(logical=False)
+    print(f"Found {n_nodes} nodes")
     if n_nodes != 2:
         return
     # 2. Define your specific 2-Node hardware map
