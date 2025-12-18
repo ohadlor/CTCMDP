@@ -1,4 +1,5 @@
 from typing import Any, Callable, Optional
+import time
 
 import gymnasium as gym
 import numpy as np
@@ -120,6 +121,7 @@ def evaluate_policy_hidden_state(
 
     ep_rewards = []
     iter_rewards = []
+    step_times = []
     observation, hidden_state, _ = env.reset(seed=seed)
 
     if adversary_policy is not None:
@@ -132,6 +134,7 @@ def evaluate_policy_hidden_state(
         stationary_env = env.get_wrapper_attr("make_env")()
         model.set_stationary_env(stationary_env)
 
+    start_time = time.time()
     for current_step in range(total_timesteps):
         # Predict
         action = model.predict(observation)
@@ -142,6 +145,7 @@ def evaluate_policy_hidden_state(
 
         # Step env
         next_observation, next_hidden_state, reward, terminated, truncated, _ = env.step(action, hidden_action)
+        step_times.append(time.time() - start_time)
 
         if getattr(model, "oracle_actor", False):
             next_observation = np.concatenate([next_observation, next_hidden_state])
@@ -166,7 +170,10 @@ def evaluate_policy_hidden_state(
         iter_rewards.append(reward)
         ep_rewards.append(reward)
         if current_step % logging_freq == 0:
+            total_time = time.time() - start_time
+            start_time = time.time()
             logger.add_scalar("rollout/avg_rew", np.mean(iter_rewards), current_step)
+            logger.add_scalar(f"rollout/avg_time_per_last_{logging_freq}_step", total_time / logging_freq, current_step)
 
         # Handle episode termination
         done = terminated or truncated

@@ -17,6 +17,7 @@ env:
 
 num_gpus: 1 # Total physical GPUs available
 parallel_task: 1
+min_threads: 2
 
 hydra:
   mode: MULTIRUN

@@ -20,7 +20,7 @@ def main(cfg: DictConfig):
     """
 
     # Force single threading to keep parallel jobs from overlapping
-    MIN_THREADS = 2
+    MIN_THREADS = cfg.min_threads
     for env_var in [
         "OMP_NUM_THREADS",
         "MKL_NUM_THREADS",
@@ -35,6 +35,7 @@ def main(cfg: DictConfig):
     if job_id is not None:
         set_torch_gpu(job_id, cfg.num_gpus)
     import torch as th
+
     th.set_num_threads(MIN_THREADS)
 
     # Imports in main to make multiprocessing easier, and after setting gpu
