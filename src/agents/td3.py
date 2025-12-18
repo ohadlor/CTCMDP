@@ -1,4 +1,5 @@
 from typing import Union, Optional
+import time
 
 import numpy as np
 import torch as th
@@ -217,7 +218,7 @@ class TD3(BaseAlgorithm):
     def learn(
         self,
         total_timesteps: int,
-        log_interval: int = 100,
+        log_interval: int = 1000,
     ):
         """
         Train the agent for a given number of timesteps.
@@ -234,6 +235,7 @@ class TD3(BaseAlgorithm):
 
         ep_rewards = []
         ep_len = 0
+        tf = 0
 
         while num_timesteps < total_timesteps:
             new_obs, reward, terminated, truncated, infos = self.collect_rollouts(obs, num_timesteps)
@@ -246,11 +248,15 @@ class TD3(BaseAlgorithm):
 
             # Train the agent
             if num_timesteps >= self.learning_starts:
+                t1 = time.time()
                 critic_loss, actor_loss = self.train(self.gradient_steps, self.batch_size)
+                tf += time.time() - t1
                 if self.logger and self._n_updates % log_interval == 0:
                     self.logger.add_scalar("loss/critic_loss", critic_loss, self._n_updates)
                     if actor_loss is not None:
                         self.logger.add_scalar("loss/actor_loss", actor_loss, self._n_updates)
+                    self.logger.add_scalar("time/train_step", tf / log_interval, self._n_updates)
+                    tf = 0
 
             # Handle episode termination
             if done:

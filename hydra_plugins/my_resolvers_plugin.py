@@ -23,7 +23,7 @@ def custom_dir_resolver(agent_cfg: DictConfig, env_cfg: DictConfig, schedule_cfg
         The custom directory name.
     """
     cool_name = generate_slug(2)
-    timestamp = datetime.now().strftime("%Y%m%d%h")
+    timestamp = datetime.now().strftime("%Y%m%d%H")
     run_name = f"{timestamp}_{cool_name}_{env_cfg.id.split('-')[0]}"
 
     # Add alg variant and model to run

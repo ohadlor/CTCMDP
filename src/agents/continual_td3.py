@@ -101,8 +101,9 @@ class DiscountModelContinualTD3(ContinualTD3):
             else:
                 replay_data = self.sim_replay_buffer.sample(batch_size)
                 gamma = self.sim_gamma
-
+            t2 = time.time()
             critic_loss, actor_loss = self.update(replay_data, gamma)
+            tf += time.time() - t2
 
             critic_losses.append(critic_loss)
             if actor_loss is not None:
