@@ -1,5 +1,4 @@
 from typing import Optional
-import time
 
 import numpy as np
 from gymnasium import Env
@@ -80,12 +79,9 @@ class DiscountModelContinualTD3(ContinualTD3):
         self._setup_sim(sim_gamma, sim_horizon, sim_action_noise_std, sim_buffer_size, current_episode_multiplier)
 
     def train(self, gradient_steps: int = 1, batch_size: int = 256) -> tuple[float, Optional[float]]:
-        tf = 0
         has_sim = hasattr(self, "sim_replay_buffer") and self.stationary_env is not None
         if has_sim:
-            t1 = time.time()
             self._add_to_sim_buffer()
-            tf += time.time() - t1
 
         self.policy.set_training_mode(True)
         actor_losses, critic_losses = [], []
@@ -101,9 +97,7 @@ class DiscountModelContinualTD3(ContinualTD3):
             else:
                 replay_data = self.sim_replay_buffer.sample(batch_size)
                 gamma = self.sim_gamma
-            t2 = time.time()
             critic_loss, actor_loss = self.update(replay_data, gamma)
-            tf += time.time() - t2
 
             critic_losses.append(critic_loss)
             if actor_loss is not None:
@@ -112,7 +106,7 @@ class DiscountModelContinualTD3(ContinualTD3):
         mean_critic_loss = np.mean(critic_losses) if critic_losses else 0.0
         mean_actor_loss = np.mean(actor_losses) if actor_losses else None
 
-        return mean_critic_loss, mean_actor_loss, tf
+        return mean_critic_loss, mean_actor_loss
 
     def _add_to_sim_buffer(self) -> None:
         """
@@ -181,14 +175,14 @@ class DiscountModelContinualTD3(ContinualTD3):
         self.stationary_env.copy_env(env)
 
     def loss_logger(self, losses: tuple[np.ndarray, np.ndarray], log_interval: int = 1000):
-        critic_loss, actor_loss, tf = losses
-        self.timer += tf
+        critic_loss, actor_loss = losses
+        # self.timer += tf
         if self.logger and self._n_updates % log_interval == 0:
             self.logger.add_scalar("loss/critic_loss", critic_loss, self._n_updates)
             if actor_loss is not None:
                 self.logger.add_scalar("loss/actor_loss", actor_loss, self._n_updates)
-            self.logger.add_scalar("time/train_step", self.timer / log_interval, self._n_updates)
-            self.timer = 0
+            # self.logger.add_scalar("time/train_step", self.timer / log_interval, self._n_updates)
+            # self.timer = 0
 
     def reset(self, seed: Optional[int] = None):
         self.set_seed(seed)

@@ -50,11 +50,11 @@ class BaseBuffer:
         self.full = False
         self.rng = np.random.default_rng() if rng is None else rng
 
-        self.observations = np.zeros((self.buffer_size, *observation_space.shape), dtype=observation_space.dtype)
-        self.actions = np.zeros((self.buffer_size, *action_space.shape), dtype=action_space.dtype)
+        self.observations = np.zeros((self.buffer_size, *observation_space.shape), dtype=np.float32)
+        self.actions = np.zeros((self.buffer_size, *action_space.shape), dtype=np.float32)
         self.rewards = np.zeros((self.buffer_size,), dtype=np.float32)
-        self.dones = np.zeros((self.buffer_size,), dtype=np.float32)
-        self.next_observations = np.zeros((self.buffer_size, *observation_space.shape), dtype=observation_space.dtype)
+        self.dones = np.zeros((self.buffer_size,), dtype=np.bool_)
+        self.next_observations = np.zeros((self.buffer_size, *observation_space.shape), dtype=np.float32)
 
     def add(
         self,
@@ -158,7 +158,7 @@ class TimeIndexedReplayBuffer(BaseBuffer):
         if rng is None:
             rng = np.random.default_rng()
         self.rng = rng
-        self.time_indices = np.zeros((self.buffer_size,), dtype=np.float32)
+        self.time_indices = {}
         # how much added weight samples from the current episode have,
         # defaults to 1 (no added weight), for latent state randomization
         self.current_episode_multiplier = current_episode_multiplier - 1
@@ -191,10 +191,9 @@ class TimeIndexedReplayBuffer(BaseBuffer):
         :return: A batch of samples.
         """
         upper_bound = self.buffer_size if self.full else self.pos
-        weights = (
-            np.ones((upper_bound,), dtype=np.float32)
-            + self.current_episode_multiplier * self.time_indices[:upper_bound]
-        )
+        weights = np.ones((upper_bound,), dtype=np.float32)
+        for idx, val in self.time_indices.items():
+            weights[idx] += self.current_episode_multiplier * val
         weights /= weights.sum()
         batch_inds = self.rng.choice(upper_bound, size=batch_size, p=weights.flatten())
         return self._get_samples(batch_inds)
@@ -203,8 +202,12 @@ class TimeIndexedReplayBuffer(BaseBuffer):
         """
         Reset the time index of all transitions in the buffer to 0.
         """
-        self.time_indices = np.zeros((self.buffer_size,), dtype=np.float32)
+        self.time_indices = {}
 
     def step_times(self) -> None:
-        self.time_indices = self.time_indices - self.in_episode_increment_factor
-        self.time_indices = np.clip(self.time_indices, 0, None)
+        for idx in list(self.time_indices.keys()):
+            new_val = self.time_indices[idx] - self.in_episode_increment_factor
+            if new_val <= 0:
+                del self.time_indices[idx]
+            else:
+                self.time_indices[idx] = new_val
