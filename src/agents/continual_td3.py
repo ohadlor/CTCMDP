@@ -81,7 +81,7 @@ class DiscountModelContinualTD3(ContinualTD3):
 
     def train(self, gradient_steps: int = 1, batch_size: int = 256) -> tuple[float, Optional[float]]:
         tf = 0
-        has_sim = self.stationary_env is not None and hasattr(self, "sim_replay_buffer")
+        has_sim = hasattr(self, "sim_replay_buffer") and self.stationary_env is not None
         if has_sim:
             t1 = time.time()
             self._add_to_sim_buffer()
