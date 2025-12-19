@@ -158,7 +158,7 @@ class TimeIndexedReplayBuffer(BaseBuffer):
         if rng is None:
             rng = np.random.default_rng()
         self.rng = rng
-        self.time_indices = np.zeros((self.buffer_size,), dtype=np.int32)
+        self.time_indices = np.zeros((self.buffer_size,), dtype=np.float32)
         # how much added weight samples from the current episode have,
         # defaults to 1 (no added weight), for latent state randomization
         self.current_episode_multiplier = current_episode_multiplier - 1
@@ -201,9 +201,9 @@ class TimeIndexedReplayBuffer(BaseBuffer):
 
     def reset_times(self) -> None:
         """
-        Increment the time index of all transitions in the buffer by 1.
+        Reset the time index of all transitions in the buffer to 0.
         """
-        self.time_indices = np.zeros((self.buffer_size,), dtype=np.int32)
+        self.time_indices = np.zeros((self.buffer_size,), dtype=np.float32)
 
     def step_times(self) -> None:
         self.time_indices = self.time_indices - self.in_episode_increment_factor

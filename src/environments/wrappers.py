@@ -228,12 +228,13 @@ class RobustWrapper(Wrapper):
         self.set_params(env_params)
 
     def copy_env(self, env: Env) -> None:
+        self.reset()
         self.copy_env_state(env)
         self.copy_env_hidden_state(env)
 
     def make_env(self) -> Env:
         env_id = self.unwrapped.spec.id
-        env = gym.make(env_id)
+        env = gym.make(env_id, max_episode_steps=-1)
         env = RobustWrapper(env)
         env.reset(seed=self.seed)
         return env
