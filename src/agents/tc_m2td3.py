@@ -163,7 +163,9 @@ class TCM2TD3(BaseAlgorithm):
                     critic_obs = self.policy.concat_obs_critic(replay_data.next_observations, next_next_hidden_states)
                     next_q_values = th.cat(self.critic_target(critic_obs, next_actions), dim=1)
                     next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
-                    target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
+                    target_q_values = (
+                        replay_data.rewards + (1 - replay_data.dones.view(th.int8)) * self.gamma * next_q_values
+                    )
 
                 critic_obs = self.policy.concat_obs_critic(replay_data.observations, replay_data.next_hidden_states)
                 current_q_values = self.critic(critic_obs, replay_data.actions)

@@ -124,7 +124,7 @@ class TD3(BaseAlgorithm):
                 # Compute target
                 next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
                 next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
-                target_q_values = replay_data.rewards + (1 - replay_data.dones) * gamma * next_q_values
+                target_q_values = replay_data.rewards + (1 - replay_data.dones.view(th.int8)) * gamma * next_q_values
 
             # Calculate critic loss
             current_q_values = self.critic(replay_data.observations, replay_data.actions)

@@ -10,7 +10,6 @@ seed: ${master_seed}
 
 num_gpus: 6 # Total physical GPUs available
 parallel_task: 120
-# max_threads: 2
 
 env:
   domain_randomization: true
