@@ -119,8 +119,9 @@ def evaluate_policy_hidden_state(
 
     logger = model.logger
 
-    ep_rewards = []
-    iter_rewards = []
+    ep_reward = 0
+    avg_reward = 0
+    total_rewards = []
     observation, hidden_state, _ = env.reset(seed=seed)
 
     if adversary_policy is not None:
@@ -165,12 +166,14 @@ def evaluate_policy_hidden_state(
         observation = next_observation
         hidden_state = next_hidden_state
 
-        iter_rewards.append(reward)
-        ep_rewards.append(reward)
+        total_rewards.append(reward)
+        ep_reward += reward
+        avg_reward += (reward - avg_reward) / (current_step + 1)
+
         if current_step % logging_freq == 0:
             total_time = time.time() - start_time
             start_time = time.time()
-            logger.add_scalar("rollout/avg_rew", np.mean(iter_rewards), current_step)
+            logger.add_scalar("rollout/avg_rew", avg_reward, current_step)
             logger.add_scalar(f"time/avg_per_last_{logging_freq}_step", total_time / logging_freq, current_step)
 
         # Handle episode termination
@@ -180,8 +183,8 @@ def evaluate_policy_hidden_state(
             if adversary_policy is not None:
                 adversary_policy.reset(start_state=hidden_state)
 
-            logger.add_scalar("rollout/ep_rew_mean", sum(ep_rewards), current_step)
-            ep_rewards = []
+            logger.add_scalar("rollout/ep_rew_mean", ep_reward, current_step)
+            ep_reward = 0
 
-    returns = np.array(iter_rewards)
+    returns = np.array(total_rewards)
     return returns
