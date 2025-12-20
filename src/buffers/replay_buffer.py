@@ -134,12 +134,17 @@ class BaseBuffer:
 
 class TimeIndexedReplayBuffer(BaseBuffer):
     """
-    A replay buffer that adds a time index to each sample.
+    A replay buffer that gives higher sampling priority to samples from the current episode.
+    This is achieved by assigning a higher weight to these samples, which then decays over time.
+    The implementation uses a sparse representation for weights and a two-stage sampling
+    process to ensure computational efficiency, especially for large buffer sizes.
 
     :param buffer_size: The size of the replay buffer.
     :param observation_space: The observation space of the environment.
     :param action_space: The action space of the environment.
-    :param gamma: The discount factor for the time indices.
+    :param current_episode_multiplier: The initial weight multiplier for samples in the current episode.
+                                       A value of 1 means no extra weight.
+    :param in_episode_increment_factor: The amount by which the weight of a sample is reduced at each step.
     :param device: The device to use for training.
     :param rng: The random number generator.
     """
@@ -149,65 +154,88 @@ class TimeIndexedReplayBuffer(BaseBuffer):
         buffer_size: int,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        current_episode_multiplier: float = 1,
+        current_episode_multiplier: float = 1.0,
         in_episode_increment_factor: float = 0.001,
         device: str = "auto",
         rng: Optional[np.random.Generator] = None,
     ):
-        super().__init__(buffer_size, observation_space, action_space, device)
-        if rng is None:
-            rng = np.random.default_rng()
-        self.rng = rng
-        self.time_indices = {}
-        # how much added weight samples from the current episode have,
-        # defaults to 1 (no added weight), for latent state randomization
-        self.current_episode_multiplier = current_episode_multiplier - 1
-        # How much the multiplier decreases each timestep in episode,
-        # for the changes in latent state in episode
+        super().__init__(buffer_size, observation_space, action_space, device, rng)
+
+        if current_episode_multiplier < 1.0:
+            raise ValueError("current_episode_multiplier must be >= 1.0")
+
+        self.episode_weights = {}  # Sparse storage for weights > 1.0
+        self.current_episode_multiplier = current_episode_multiplier
         self.in_episode_increment_factor = in_episode_increment_factor
 
-    def add(self, obs, next_obs, action, reward, done) -> None:
-        """
-        Add a transition to the replay buffer.
-
-        :param obs: The observation.
-        :param next_obs: The next observation.
-        :param action: The action.
-        :param reward: The reward.
-        :param done: The done flag.
-        """
+    def add(self, obs: np.ndarray, next_obs: np.ndarray, action: np.ndarray, reward: float, done: bool) -> None:
         pos = self.pos
+        if self.full and pos in self.episode_weights:
+            del self.episode_weights[pos]
+
         super().add(obs, next_obs, action, reward, done)
-        # Set current episode time indicies to 1
-        self.time_indices[pos] = 1
+
+        if self.current_episode_multiplier > 1.0:
+            self.episode_weights[pos] = self.current_episode_multiplier
 
     def sample(self, batch_size: int) -> BaseReplayBufferSamples:
-        """
-        Sample a batch of transitions from the replay buffer.
-        Samples are weighted by the time index and discount factor,
-        more recent samples have greater weight.
+        upper_bound = self.size()
 
-        :param batch_size: The size of the batch to sample.
-        :return: A batch of samples.
-        """
-        upper_bound = self.buffer_size if self.full else self.pos
-        weights = np.ones((upper_bound,), dtype=np.float32)
-        for idx, val in self.time_indices.items():
-            weights[idx] += self.current_episode_multiplier * val
-        weights /= weights.sum()
-        batch_inds = self.rng.choice(upper_bound, size=batch_size, p=weights.flatten())
-        return self._get_samples(batch_inds)
+        hot_indices = list(self.episode_weights.keys())
+        num_hot = len(hot_indices)
+        num_cold = upper_bound - num_hot
 
-    def reset_times(self) -> None:
-        """
-        Reset the time index of all transitions in the buffer to 0.
-        """
-        self.time_indices = {}
+        batch_inds = []
 
-    def step_times(self) -> None:
-        for idx in list(self.time_indices.keys()):
-            new_val = self.time_indices[idx] - self.in_episode_increment_factor
-            if new_val <= 0:
-                del self.time_indices[idx]
+        if num_hot > 0:
+            hot_weights = np.array([self.episode_weights[i] for i in hot_indices])
+            sum_hot_weights = np.sum(hot_weights)
+
+            total_weight = num_cold + sum_hot_weights
+            prob_hot_group = sum_hot_weights / total_weight
+
+            num_to_sample_from_hot = self.rng.binomial(batch_size, prob_hot_group)
+
+            if num_to_sample_from_hot > 0:
+                hot_probabilities = hot_weights / sum_hot_weights
+                hot_samples = self.rng.choice(
+                    hot_indices, size=num_to_sample_from_hot, p=hot_probabilities, replace=True
+                )
+                batch_inds.extend(hot_samples)
+
+        num_to_sample_from_cold = batch_size - len(batch_inds)
+
+        if num_to_sample_from_cold > 0:
+            # Uniformly sample from cold indices using rejection sampling
+            hot_indices_set = set(hot_indices)
+            cold_samples = []
+            while len(cold_samples) < num_to_sample_from_cold:
+                # Oversample to reduce the number of Python loops
+                oversampling_factor = 1.1
+                candidate_batch_size = int((num_to_sample_from_cold - len(cold_samples)) * oversampling_factor) + 10
+
+                candidates = self.rng.integers(0, upper_bound, size=candidate_batch_size)
+                new_samples = [c for c in candidates if c not in hot_indices_set]
+                cold_samples.extend(new_samples)
+
+            batch_inds.extend(cold_samples[:num_to_sample_from_cold])
+
+        self.rng.shuffle(batch_inds)
+        return self._get_samples(np.array(batch_inds))
+
+    def end_episode(self) -> None:
+        """Resets the weights of the current episode's samples back to 1."""
+        self.episode_weights.clear()
+
+    def update_episode_weights(self) -> None:
+        """Decays the weights of the samples from the current episode."""
+        indices_to_remove = []
+        for idx, weight in self.episode_weights.items():
+            new_weight = weight - self.in_episode_increment_factor
+            if new_weight <= 1.0:
+                indices_to_remove.append(idx)
             else:
-                self.time_indices[idx] = new_val
+                self.episode_weights[idx] = new_weight
+
+        for idx in indices_to_remove:
+            del self.episode_weights[idx]

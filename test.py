@@ -55,7 +55,7 @@ def main(cfg: DictConfig):
 
     print("Setup complete. Starting continual learning...")
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     returns = evaluate_policy_hidden_state(
         model=agent,
         env=env,
@@ -63,7 +63,7 @@ def main(cfg: DictConfig):
         adversary_policy=hidden_action_schedule,
         seed=cfg.seed,
     )
-    end_time = time.time()
+    end_time = time.perf_counter()
 
     print(f"Evaluation took {end_time - start_time:.2f} seconds")
     print(f"Time average reward: {returns.mean():.5f}")

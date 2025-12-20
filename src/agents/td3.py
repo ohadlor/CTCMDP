@@ -248,9 +248,9 @@ class TD3(BaseAlgorithm):
 
             # Train the agent
             if num_timesteps >= self.learning_starts:
-                t1 = time.time()
+                t1 = time.perf_counter()
                 critic_loss, actor_loss = self.train(self.gradient_steps, self.batch_size)
-                tf += time.time() - t1
+                tf += time.perf_counter() - t1
                 if self.logger and self._n_updates % log_interval == 0:
                     self.logger.add_scalar("loss/critic_loss", critic_loss, self._n_updates)
                     if actor_loss is not None:

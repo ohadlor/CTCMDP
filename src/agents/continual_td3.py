@@ -1,4 +1,5 @@
 from typing import Optional
+import time
 
 import numpy as np
 from gymnasium import Env
@@ -74,19 +75,27 @@ class DiscountModelContinualTD3(ContinualTD3):
         else:
             self.p_real = p_real
 
-        self.timer = 0
+        self.timers = None
 
         self._setup_sim(sim_gamma, sim_horizon, sim_action_noise_std, sim_buffer_size, current_episode_multiplier)
 
     def train(self, gradient_steps: int = 1, batch_size: int = 256) -> tuple[float, Optional[float]]:
+
         has_sim = hasattr(self, "sim_replay_buffer") and self.stationary_env is not None
         if has_sim:
+            t1 = time.perf_counter()
             self._add_to_sim_buffer()
+            timer_1 = time.perf_counter() - t1
+        else:
+            timer_1 = 0.0
 
         self.policy.set_training_mode(True)
-        actor_losses, critic_losses = [], []
 
-        for _ in range(gradient_steps):
+        mean_critic_loss, mean_actor_loss = 0.0, 0.0
+        actor_updates = 0
+
+        t2 = time.perf_counter()
+        for i in range(gradient_steps):
             self._n_updates += 1
             # Select real or simulated data, use real or sim discont factor
             use_real = self.rng.binomial(1, self.p_real) == 1 if has_sim else True
@@ -99,14 +108,15 @@ class DiscountModelContinualTD3(ContinualTD3):
                 gamma = self.sim_gamma
             critic_loss, actor_loss = self.update(replay_data, gamma)
 
-            critic_losses.append(critic_loss)
+            # Update running averages
+            mean_critic_loss += (critic_loss - mean_critic_loss) / (i + 1)
             if actor_loss is not None:
-                actor_losses.append(actor_loss)
+                mean_actor_loss += (actor_loss - mean_actor_loss) / (actor_updates + 1)
+                actor_updates += 1
 
-        mean_critic_loss = np.mean(critic_losses) if critic_losses else 0.0
-        mean_actor_loss = np.mean(actor_losses) if actor_losses else None
+        timer_2 = time.perf_counter() - t2
 
-        return mean_critic_loss, mean_actor_loss
+        return (mean_critic_loss, mean_actor_loss if actor_updates > 0 else None), (timer_1, timer_2)
 
     def _add_to_sim_buffer(self) -> None:
         """
@@ -133,7 +143,7 @@ class DiscountModelContinualTD3(ContinualTD3):
             obs = next_obs
             if done:
                 continue
-        self.sim_replay_buffer.step_times()
+        self.sim_replay_buffer.update_episode_weights()
 
     def _setup_sim(
         self, gamma: float, horizon: int, action_noise_std: float, buffer_size: int, current_episode_multiplier: float
@@ -174,15 +184,20 @@ class DiscountModelContinualTD3(ContinualTD3):
     def update_stationary_env(self, env: Env):
         self.stationary_env.copy_env(env)
 
-    def loss_logger(self, losses: tuple[np.ndarray, np.ndarray], log_interval: int = 1000):
+    def loss_logger(self, losses: tuple[np.ndarray, np.ndarray], timers: tuple[float, float], log_interval: int = 1000):
         critic_loss, actor_loss = losses
-        # self.timer += tf
+        if self.timers is None:
+            self.timers = np.array(timers)
+        else:
+            self.timers += np.array(timers)
+
         if self.logger and self._n_updates % log_interval == 0:
             self.logger.add_scalar("loss/critic_loss", critic_loss, self._n_updates)
             if actor_loss is not None:
                 self.logger.add_scalar("loss/actor_loss", actor_loss, self._n_updates)
-            # self.logger.add_scalar("time/train_step", self.timer / log_interval, self._n_updates)
-            # self.timer = 0
+                self.logger.add_scalar("time/sim_step", self.timers[0] / log_interval, self._n_updates)
+            self.logger.add_scalar("time/train_step", self.timers[1] / log_interval, self._n_updates)
+            self.timers = None
 
     def reset(self, seed: Optional[int] = None):
         self.set_seed(seed)

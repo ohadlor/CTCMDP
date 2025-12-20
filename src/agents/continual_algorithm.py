@@ -112,8 +112,8 @@ def make_continual_learner(
 
             # Perform a training step
             if self.num_timesteps >= self.learning_starts and self.replay_buffer.size > 0:
-                losses = self.train(gradient_steps=self.gradient_steps, batch_size=self.batch_size)
-                self.loss_logger(losses, log_interval)
+                losses, timers = self.train(gradient_steps=self.gradient_steps, batch_size=self.batch_size)
+                self.loss_logger(losses, timers, log_interval)
 
         def add(self, sample: Optional[dict] = None, truncated: bool = False):
             if sample is not None:
@@ -124,7 +124,7 @@ def make_continual_learner(
                 if done:
                     for buffer in self.replay_buffers:
                         if isinstance(buffer, TimeIndexedReplayBuffer):
-                            buffer.reset_times()
+                            buffer.end_episode()
 
         def reset(self, seed: Optional[int] = None) -> None:
             self.set_seed(seed)
