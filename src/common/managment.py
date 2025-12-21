@@ -1,6 +1,6 @@
 import os
 
-import psutil
+# import psutil
 from omegaconf import DictConfig
 
 
@@ -21,32 +21,32 @@ def set_torch_gpu(job_num: int, n_gpus: int = 1):
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
 
 
-def set_affinity(job_id: int, cores_per_job: int):
+# def set_affinity(job_id: int, cores_per_job: int):
 
-    # 2. Define your specific 2-Node hardware map
-    # Node 0: 0-63 and 128-191
-    # Node 1: 64-127 and 192-255
-    n_nodes = 2
-    node0_pool = list(range(0, 64)) + list(range(128, 192))
-    node1_pool = list(range(64, 128)) + list(range(192, 256))
+#     # 2. Define your specific 2-Node hardware map
+#     # Node 0: 0-63 and 128-191
+#     # Node 1: 64-127 and 192-255
+#     n_nodes = 2
+#     node0_pool = list(range(0, 64)) + list(range(128, 192))
+#     node1_pool = list(range(64, 128)) + list(range(192, 256))
 
-    node_id = job_id % n_nodes
-    target_pool = node0_pool if node_id == 0 else node1_pool
+#     node_id = job_id % n_nodes
+#     target_pool = node0_pool if node_id == 0 else node1_pool
 
-    jobs_on_this_node = job_id // n_nodes
-    start_idx = jobs_on_this_node * cores_per_job
-    end_idx = start_idx + cores_per_job
+#     jobs_on_this_node = job_id // n_nodes
+#     start_idx = jobs_on_this_node * cores_per_job
+#     end_idx = start_idx + cores_per_job
 
-    cores = target_pool[start_idx:end_idx]
-    p = psutil.Process(os.getpid())
-    p.cpu_affinity(cores)
+#     cores = target_pool[start_idx:end_idx]
+#     p = psutil.Process(os.getpid())
+#     p.cpu_affinity(cores)
 
-    # Outside of loop such that os.environ["CUDA_VISIBLE_DEVICES"] is set before importing torch
-    # os.environ["OMP_NUM_THREADS"] = str(cores_per_job)
-    # os.environ["MKL_NUM_THREADS"] = str(cores_per_job)
-    # th.set_num_threads(cores_per_job)
+#     # Outside of loop such that os.environ["CUDA_VISIBLE_DEVICES"] is set before importing torch
+#     # os.environ["OMP_NUM_THREADS"] = str(cores_per_job)
+#     # os.environ["MKL_NUM_THREADS"] = str(cores_per_job)
+#     # th.set_num_threads(cores_per_job)
 
-    print(f"Job {job_id} -> Node {node_id} | Cores: {cores} | Threads: {cores_per_job}")
+#     print(f"Job {job_id} -> Node {node_id} | Cores: {cores} | Threads: {cores_per_job}")
 
 
 def update_bootstrap_path(agent_params: dict, cfg: DictConfig) -> dict:

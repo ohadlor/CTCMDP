@@ -1,6 +1,7 @@
 from typing import NamedTuple, Optional, Union
 
 import numba
+from numba import int64
 import numpy as np
 import torch as th
 from gymnasium import spaces
@@ -133,7 +134,7 @@ class BaseBuffer:
         return self.buffer_size if self.full else self.pos
 
 
-@numba.jit(nopython=True)
+@numba.jit(int64[:](int64, int64, int64[:]), nopython=True)
 def _sample_cold_indices_numba(
     num_to_sample: int,
     upper_bound: int,
