@@ -9,7 +9,7 @@ from .base_algorithm import BaseAlgorithm
 
 
 def make_continual_learner(
-    base_algorithm: type[BaseAlgorithm], gradient_steps: int = 1, batch_size: int = 256
+    base_algorithm: type[BaseAlgorithm], gradient_steps: int = 1, batch_size: int = 100
 ) -> type[BaseAlgorithm]:
     """
     Create a continual learning algorithm from a base algorithm.

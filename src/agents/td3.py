@@ -151,7 +151,7 @@ class TD3(BaseAlgorithm):
             polyak_update(self.actor.parameters(), self.actor_target.parameters(), self.tau)
             polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
 
-        return (critic_loss.item(), actor_loss.item()) if actor_loss is not None else (critic_loss.item(), actor_loss)
+        return critic_loss.item(), actor_loss.item() if actor_loss is not None else actor_loss
 
     def train(self, gradient_steps: int, batch_size: int) -> tuple[float, Optional[float]]:
         self.policy.set_training_mode(True)

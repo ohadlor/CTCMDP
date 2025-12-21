@@ -90,7 +90,7 @@ class BaseBuffer:
         :param batch_size: The size of the batch to sample.
         :return: A batch of samples.
         """
-        upper_bound = self.buffer_size if self.full else self.pos
+        upper_bound = self.size
         batch_inds = self.rng.integers(0, upper_bound, size=batch_size)
         return self._get_samples(batch_inds)
 
@@ -122,7 +122,7 @@ class BaseBuffer:
         :param logger: The logger to use.
         :param step: The current step.
         """
-        logger.add_scalar("buffer/size", self.size(), step)
+        logger.add_scalar("buffer/size", self.size, step)
 
     @property
     def size(self) -> int:
@@ -179,7 +179,7 @@ class TimeIndexedReplayBuffer(BaseBuffer):
             self.episode_weights[pos] = self.current_episode_multiplier
 
     def sample(self, batch_size: int) -> BaseReplayBufferSamples:
-        upper_bound = self.size()
+        upper_bound = self.size
 
         hot_indices = list(self.episode_weights.keys())
         num_hot = len(hot_indices)

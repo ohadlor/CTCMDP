@@ -80,14 +80,10 @@ class DiscountModelContinualTD3(ContinualTD3):
         self._setup_sim(sim_gamma, sim_horizon, sim_action_noise_std, sim_buffer_size, current_episode_multiplier)
 
     def train(self, gradient_steps: int = 1, batch_size: int = 256) -> tuple[float, Optional[float]]:
-
+        timer_1 = 0
         has_sim = hasattr(self, "sim_replay_buffer") and self.stationary_env is not None
         if has_sim:
-            t1 = time.perf_counter()
             self._add_to_sim_buffer()
-            timer_1 = time.perf_counter() - t1
-        else:
-            timer_1 = 0.0
 
         self.policy.set_training_mode(True)
 
@@ -106,7 +102,9 @@ class DiscountModelContinualTD3(ContinualTD3):
             else:
                 replay_data = self.sim_replay_buffer.sample(batch_size)
                 gamma = self.sim_gamma
+            t1 = time.perf_counter()
             critic_loss, actor_loss = self.update(replay_data, gamma)
+            timer_1 += time.perf_counter() - t1
 
             # Update running averages
             mean_critic_loss += (critic_loss - mean_critic_loss) / (i + 1)
@@ -116,7 +114,7 @@ class DiscountModelContinualTD3(ContinualTD3):
 
         timer_2 = time.perf_counter() - t2
 
-        return (mean_critic_loss, mean_actor_loss if actor_updates > 0 else None), (timer_1, timer_2)
+        return (mean_critic_loss, mean_actor_loss if actor_updates > 0 else None), (timer_1, timer_2 - timer_1)
 
     def _add_to_sim_buffer(self) -> None:
         """
@@ -195,8 +193,8 @@ class DiscountModelContinualTD3(ContinualTD3):
             self.logger.add_scalar("loss/critic_loss", critic_loss, self._n_updates)
             if actor_loss is not None:
                 self.logger.add_scalar("loss/actor_loss", actor_loss, self._n_updates)
-                self.logger.add_scalar("time/sim_step", self.timers[0] / log_interval, self._n_updates)
-            self.logger.add_scalar("time/train_step", self.timers[1] / log_interval, self._n_updates)
+            self.logger.add_scalar("time/update", self.timers[0] / log_interval, self._n_updates)
+            self.logger.add_scalar("time/train_minus_update", self.timers[1] / log_interval, self._n_updates)
             self.timers = None
 
     def reset(self, seed: Optional[int] = None):

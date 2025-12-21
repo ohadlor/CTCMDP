@@ -9,14 +9,14 @@ master_seed: 2671232903
 seed: ${master_seed}
 experiment_name: trial
 
-iterations: 1
-total_timesteps: 100_000
+iterations: 4
+total_timesteps: 500_000
 env:
   domain_randomization: true
-  radius: 0.1
+  radius: 0.01
 
 num_gpus: 1 # Total physical GPUs available
-parallel_task: 1
+parallel_task: 4
 
 hydra:
   mode: MULTIRUN

@@ -135,7 +135,6 @@ def evaluate_policy_hidden_state(
         model.set_stationary_env(stationary_env)
 
     start_time = time.perf_counter()
-    timer_1 = 0
     for current_step in range(total_timesteps):
         # Predict
         action = model.predict(observation)
@@ -162,9 +161,7 @@ def evaluate_policy_hidden_state(
             if hasattr(model, "stationary_env"):
                 model.update_stationary_env(env)
             # Learn
-            t1 = time.perf_counter()
             model.learn(next_observation)
-            timer_1 += time.perf_counter() - t1
 
         observation = next_observation
         hidden_state = next_hidden_state
@@ -173,13 +170,11 @@ def evaluate_policy_hidden_state(
         ep_reward += reward
         avg_reward += (reward - avg_reward) / (current_step + 1)
 
-        if current_step % logging_freq - 1 == 0:
+        if current_step % (logging_freq - 1) == 0:
             total_time = time.perf_counter() - start_time
             start_time = time.perf_counter()
             logger.add_scalar("rollout/avg_rew", avg_reward, current_step)
-            logger.add_scalar(f"time/avg_per_last_{logging_freq}_step", total_time / logging_freq, current_step)
-            logger.add_scalar(f"time/learn_per_last_{logging_freq}_step", timer_1 / logging_freq, current_step)
-            timer_1 = 0
+            logger.add_scalar("time/eval_avg", total_time / logging_freq, current_step)
 
         # Handle episode termination
         done = terminated or truncated
