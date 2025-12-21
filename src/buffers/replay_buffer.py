@@ -1,5 +1,6 @@
 from typing import NamedTuple, Optional, Union
 
+import numba
 import numpy as np
 import torch as th
 from gymnasium import spaces
@@ -132,6 +133,38 @@ class BaseBuffer:
         return self.buffer_size if self.full else self.pos
 
 
+@numba.jit(nopython=True)
+def _sample_cold_indices_numba(
+    num_to_sample: int,
+    upper_bound: int,
+    hot_indices: np.ndarray,
+) -> np.ndarray:
+    """
+    Sample indices from the "cold" section of the buffer using rejection sampling.
+    This function is JIT-compiled with Numba for performance.
+
+    :param num_to_sample: The number of indices to sample.
+    :param upper_bound: The upper bound for the random indices.
+    :param hot_indices: An array of "hot" indices to exclude from sampling.
+    :return: An array of sampled cold indices.
+    """
+    cold_samples = np.empty(num_to_sample, dtype=np.int64)
+    hot_indices_set = set(hot_indices)
+    count = 0
+    oversampling_factor = 1.1
+
+    while count < num_to_sample:
+        candidate_batch_size = int((num_to_sample - count) * oversampling_factor) + 10
+        candidates = np.random.randint(0, upper_bound, size=candidate_batch_size)
+
+        for candidate in candidates:
+            if candidate not in hot_indices_set:
+                if count < num_to_sample:
+                    cold_samples[count] = candidate
+                    count += 1
+    return cold_samples
+
+
 class TimeIndexedReplayBuffer(BaseBuffer):
     """
     A replay buffer that gives higher sampling priority to samples from the current episode.
@@ -207,18 +240,10 @@ class TimeIndexedReplayBuffer(BaseBuffer):
 
         if num_to_sample_from_cold > 0:
             # Uniformly sample from cold indices using rejection sampling
-            hot_indices_set = set(hot_indices)
-            cold_samples = []
-            while len(cold_samples) < num_to_sample_from_cold:
-                # Oversample to reduce the number of Python loops
-                oversampling_factor = 1.1
-                candidate_batch_size = int((num_to_sample_from_cold - len(cold_samples)) * oversampling_factor) + 10
-
-                candidates = self.rng.integers(0, upper_bound, size=candidate_batch_size)
-                new_samples = [c for c in candidates if c not in hot_indices_set]
-                cold_samples.extend(new_samples)
-
-            batch_inds.extend(cold_samples[:num_to_sample_from_cold])
+            cold_samples = _sample_cold_indices_numba(
+                num_to_sample_from_cold, upper_bound, np.array(hot_indices, dtype=np.int64)
+            )
+            batch_inds.extend(cold_samples)
 
         self.rng.shuffle(batch_inds)
         return self._get_samples(np.array(batch_inds))
