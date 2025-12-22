@@ -13,6 +13,8 @@ parallel_task: 120
 
 env:
   domain_randomization: true
+# agent:
+#   tensorboard_log: null
 
 hydra:
   mode: MULTIRUN

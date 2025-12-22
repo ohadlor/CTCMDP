@@ -34,7 +34,7 @@ class BaseAlgorithm(ABC):
         lr: float = 1e-3,
         device: Union[th.device, str] = "auto",
         seed: Optional[int] = None,
-        tensorboard_log: str = "runs",
+        tensorboard_log: Optional[str] = None,
         checkpoint_path: Optional[str] = None,
     ):
         self.observation_space = observation_space
@@ -52,6 +52,8 @@ class BaseAlgorithm(ABC):
         self.checkpoint_path = checkpoint_path
 
     def update_logger_path(self, path: str) -> SummaryWriter:
+        if path is None:
+            return None
         self.logger = SummaryWriter(log_dir=path)
         return self.logger
 

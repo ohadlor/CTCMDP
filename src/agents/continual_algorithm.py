@@ -166,4 +166,7 @@ def make_continual_learner(
         def loss_logger(self, losses: list[np.ndarray], log_interval: int = 1):
             pass
 
+        def track_policy_change(self):
+            pass
+
     return ContinualLearningAlgorithm

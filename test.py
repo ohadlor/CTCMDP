@@ -1,5 +1,4 @@
 import os
-import time
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
@@ -35,7 +34,8 @@ def main(cfg: DictConfig):
     env = create_env(cfg)
     env.action_space.seed(cfg.seed)
 
-    agent_params = {"seed": cfg.seed, "env": env, "tensorboard_log": output_dir}
+    tensorboard_log = cfg.agent.get("tensorboard_log", output_dir)
+    agent_params = {"seed": cfg.seed, "env": env, "tensorboard_log": tensorboard_log}
     agent_params = update_bootstrap_path(agent_params, cfg)
     agent: TD3 = hydra.utils.instantiate(cfg.agent.model, **agent_params, _convert_="all")
 
@@ -55,23 +55,14 @@ def main(cfg: DictConfig):
 
     print("Setup complete. Starting continual learning...")
 
-    start_time = time.perf_counter()
-    returns = evaluate_policy_hidden_state(
+    evaluate_policy_hidden_state(
         model=agent,
         env=env,
         total_timesteps=cfg.total_timesteps,
         adversary_policy=hidden_action_schedule,
         seed=cfg.seed,
+        output_dir=output_dir,
     )
-    end_time = time.perf_counter()
-
-    print(f"Evaluation took {end_time - start_time:.2f} seconds")
-    print(f"Time average reward: {returns.mean():.5f}")
-
-    # Save evaluation results
-    with open(f"{output_dir}/evaluation.txt", "w") as f:
-        f.write(f"Time average reward: {returns.mean():.5f}")
-        f.write(f"\nRun time: {end_time - start_time:.5f} seconds")
 
 
 if __name__ == "__main__":

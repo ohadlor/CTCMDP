@@ -10,10 +10,12 @@ seed: ${master_seed}
 experiment_name: trial
 
 iterations: 4
-total_timesteps: 500_000
+total_timesteps: 5_000
 env:
   domain_randomization: true
   radius: 0.01
+# agent:
+#   tensorboard_log: null
 
 num_gpus: 1 # Total physical GPUs available
 parallel_task: 1

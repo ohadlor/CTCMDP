@@ -114,7 +114,9 @@ def evaluate_policy_hidden_state(
     adversary_policy: Optional[BaseActionSchedule],
     total_timesteps: int,
     logging_freq: int = 1000,
+    output_dir: Optional[str] = None,
 ):
+    alg_start_time = time.perf_counter()
     is_continual_learner = getattr(model, "is_continual_learner", False)
 
     logger = model.logger
@@ -170,7 +172,7 @@ def evaluate_policy_hidden_state(
         ep_reward += reward
         avg_reward += (reward - avg_reward) / (current_step + 1)
 
-        if current_step % (logging_freq - 1) == 0:
+        if current_step % (logging_freq - 1) == 0 and logger:
             total_time = time.perf_counter() - start_time
             start_time = time.perf_counter()
             logger.add_scalar("rollout/avg_rew", avg_reward, current_step)
@@ -182,9 +184,23 @@ def evaluate_policy_hidden_state(
             observation, hidden_state, _ = env.reset()
             if adversary_policy is not None:
                 adversary_policy.reset(start_state=hidden_state)
-
-            logger.add_scalar("rollout/ep_rew_mean", ep_reward, current_step)
+            if logger:
+                logger.add_scalar("rollout/ep_rew_mean", ep_reward, current_step)
             ep_reward = 0
 
     returns = np.array(total_rewards)
+    if output_dir is not None:
+        np.save(f"{output_dir}/rewards.npy", returns)
+
+    with open(f"{output_dir}/evaluation.txt", "w") as f:
+        f.write(f"Time average reward: {returns.mean():.5f}")
+        f.write(
+            f"\nAverage l1 policy parameter change for learning rate {model.lr}:"
+            + f" {model.last_accumulated_policy_change:.8f}"
+        )
+        f.write(f"\nRun time: {time.perf_counter() - alg_start_time:.5f} seconds")
+
+    print(f"Evaluation took {time.perf_counter() - alg_start_time:.2f} seconds")
+    print(f"Time average reward: {returns.mean():.5f}")
+
     return returns

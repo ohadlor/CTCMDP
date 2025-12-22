@@ -2,6 +2,7 @@ from typing import Optional
 import time
 
 import numpy as np
+import torch as th
 from gymnasium import Env
 
 from src.agents.td3 import TD3
@@ -79,6 +80,9 @@ class DiscountModelContinualTD3(ContinualTD3):
 
         self._setup_sim(sim_gamma, sim_horizon, sim_action_noise_std, sim_buffer_size, current_episode_multiplier)
 
+        self.last_actor_state_dict = None
+        self.accumulated_policy_change = 0.0
+
     def train(self, gradient_steps: int = 1, batch_size: int = 256) -> tuple[float, Optional[float]]:
         timer_1 = 0
         has_sim = hasattr(self, "sim_replay_buffer") and self.stationary_env is not None
@@ -142,6 +146,7 @@ class DiscountModelContinualTD3(ContinualTD3):
             if done:
                 continue
         self.sim_replay_buffer.update_episode_weights()
+        self.track_policy_change()
 
     def _setup_sim(
         self, gamma: float, horizon: int, action_noise_std: float, buffer_size: int, current_episode_multiplier: float
@@ -196,6 +201,36 @@ class DiscountModelContinualTD3(ContinualTD3):
             self.logger.add_scalar("time/update", self.timers[0] / log_interval, self._n_updates)
             self.logger.add_scalar("time/train_minus_update", self.timers[1] / log_interval, self._n_updates)
             self.timers = None
+
+    def track_policy_change(self, log_interval: int = 1000):
+        """
+        Tracks the change in the actor weights between timesteps and logs the average over log_interval.
+        This method should be called after each training update.
+        """
+        if self.last_actor_state_dict is None:
+            self.last_actor_state_dict = {k: v.clone() for k, v in self.actor.state_dict().items()}
+            return
+
+        current_weights = self.actor.state_dict()
+        change = 0
+        num_params = 0
+        for key in current_weights:
+            if key in self.last_actor_state_dict:
+                diff = th.sum(th.abs(current_weights[key] - self.last_actor_state_dict[key]))
+                change += diff.item()
+                num_params += self.last_actor_state_dict[key].numel()
+
+        if num_params > 0:
+            self.accumulated_policy_change += change / num_params
+
+        self.last_actor_state_dict = {k: v.clone() for k, v in current_weights.items()}
+
+        if self._n_updates > 0 and self._n_updates % log_interval == 0:
+            avg_policy_change = self.accumulated_policy_change / log_interval
+            self.last_accumulated_policy_change = self.accumulated_policy_change
+            self.accumulated_policy_change = 0.0
+            if self.logger:
+                self.logger.add_scalar("train/policy_change", avg_policy_change, self._n_updates)
 
     def reset(self, seed: Optional[int] = None):
         self.set_seed(seed)
