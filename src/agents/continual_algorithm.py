@@ -21,7 +21,7 @@ def make_continual_learner(
     gradient_steps : int, optional
         The number of gradient steps to perform at each training step, by default 1.
     batch_size : int, optional
-        The batch size to use for training, by default 256.
+        The batch size to use for training, by default 100.
 
     Returns
     -------

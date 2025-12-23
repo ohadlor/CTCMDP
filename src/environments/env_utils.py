@@ -2,6 +2,9 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
+from .rewards import ENV_REWARDS
+
+
 # --- Robust Uncertainty Sets ---
 # Standard uncertainty sets for perturbations (Mass, Friction, Damping)
 # Values represent absolute ranges [min, max] based on standard MuJoCo XML defaults.
@@ -36,20 +39,24 @@ PARAMETER_SPACE = {
 }
 
 
-def get_param_bounds(env_id: str) -> dict[str, tuple[float, float]]:
+def get_param_bounds(env_id: str, reward_augmentation: bool = False) -> dict[str, tuple[float, float]]:
     env_name = env_id.split("-")[0]
     full_set = PARAMETER_SPACE.get(env_name, {})
     uncertainty_set = {param: bounds[0] for param, bounds in full_set.items()}
+    if reward_augmentation:
+        uncertainty_set["reward_target"] = ENV_REWARDS[env_name]["range"][0]
     return uncertainty_set
 
 
-def get_param_defaults(env_name: str) -> dict[str, float]:
+def get_param_defaults(env_name: str, reward_augmentation: bool = False) -> dict[str, float]:
     """
     Gets the parameter bounds dictionary from the gym
     id string and a dimension name.
     """
     full_set = PARAMETER_SPACE.get(env_name, {})
     defaults = {param: bounds[1] for param, bounds in full_set.items()}
+    if reward_augmentation:
+        defaults["reward_target"] = ENV_REWARDS[env_name]["range"][1]
     return defaults
 
 
@@ -134,25 +141,13 @@ def find_attribute_in_stack(start_env, attribute_name: str, default_value=None):
     return default_value
 
 
-def check_for_wrapper(env: gym.Env, wrapper_class: type) -> bool:
+def find_wrapper_in_stack(env: gym.Env, wrapper_class: type):
     """
-    Checks if a wrapper of a specific class exists in the environment stack.
-
-    Parameters
-    ----------
-    env : gym.Env
-        The environment to check.
-    wrapper_class : type
-        The wrapper class to look for.
-
-    Returns
-    -------
-    bool
-        True if the wrapper is found, False otherwise.
+    Finds a wrapper of a specific class in the environment stack.
     """
     current_env = env
     while isinstance(current_env, gym.Wrapper):
         if isinstance(current_env, wrapper_class):
-            return True
+            return current_env
         current_env = current_env.env
-    return False
+    return None

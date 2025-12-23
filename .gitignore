@@ -69,6 +69,8 @@ ipython_config.py
 # Outputs
 outputs/
 pretrained_models*
+processed_data/
+plots/
 
 # Environments
 .env

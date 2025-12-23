@@ -6,7 +6,7 @@ import numpy as np
 
 from src.agents.base_algorithm import BaseAlgorithm
 from src.schedules import BaseActionSchedule
-from src.environments.env_utils import check_for_wrapper
+from src.environments.env_utils import find_wrapper_in_stack
 from src.environments.wrappers import TCRMDP
 
 
@@ -64,7 +64,7 @@ def evaluate_policy(
     all_rewards = []
 
     # If robust alg, evaluate on the stationary env
-    if check_for_wrapper(env, TCRMDP):
+    if find_wrapper_in_stack(env, TCRMDP) is not None:
         env.reset(seed=seed)
         env = env.get_wrapper_attr("make_env")()
         hidden_state = np.array(list(env.get_params().values()))

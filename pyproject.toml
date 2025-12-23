@@ -21,6 +21,7 @@ dependencies = [
     "hydra-joblib-launcher",
     "joblib",
     "numba",
+    "matplotlib",
 ]
 
 

@@ -170,7 +170,7 @@ class DiscountModelContinualTD3(ContinualTD3):
             self.sim_gamma = gamma
             self.sim_action_noise = NormalActionNoise(mean=0, std=action_noise_std)
             self.sim_replay_buffer = TimeIndexedReplayBuffer(
-                buffer_size * self.sim_horizon,
+                buffer_size,
                 self.observation_space,
                 self.action_space,
                 current_episode_multiplier=current_episode_multiplier,
